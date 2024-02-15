@@ -5,8 +5,25 @@ from discord.ext import tasks
 import json
 import subprocess
 import requests
+from pathlib import Path
 
-DISCORD_TOKEN = open('secret.txt', 'r').read().strip()
+DISCORD_TOKEN = open(str(Path(__file__).parent) + '/secret.txt', 'r').read().strip()
+
+def log(msg: str) -> None:
+	print(msg, flush=True)
+
+# Fake a player message
+def send_message_minecraft(author: str, content: str) -> None:
+	response = {
+		'rawtext': [{
+			'text': f'<{author}> {content}'
+		}]
+	}
+
+	response_text = 'tellraw @a ' + json.dumps(response).replace('\\','\\\\').replace('$', '\\$') + '\\n'
+
+	command = ['screen', '-r', 'flatearth', '-p', '0', '-X', 'stuff', response_text]
+	subprocess.run(command)
 
 class DiscordClient(discord.Client):
 	async def on_ready(self):
@@ -18,11 +35,10 @@ class DiscordClient(discord.Client):
 		activity = 'ERROR'
 		status = discord.Status.do_not_disturb
 
-                #Side note, this data is cached for 5 minutes. Might want a more accurate way to do this...
+		#Side note, this data is cached for 5 minutes. Might want a more accurate way to do this...
 		res = requests.get('https://api.mcsrvstat.us/bedrock/2/mc.skrunky.com')
 		if res.status_code == 200:
 			data = json.loads(res.text)
-			print(data)
 			count = data.get('players',{}).get('online')
 
 			if count == 0:
@@ -44,20 +60,17 @@ class DiscordClient(discord.Client):
 		if message.author == self.user:
 			return
 
-		#Only listen to direct messages
-		if not isinstance(message.channel, discord.channel.DMChannel):
+		if isinstance(message.channel, discord.channel.DMChannel):
+			#When a user DMs the bot, react to the message to indicate that their message has been sent to the server
+			log(f'Received DM from {message.author}: {message.content}')
+			send_message_minecraft(message.author, message.content)
+
+			try:
+				await message.add_reaction('✅')
+			except Exception as e:
+				log(f'Failed to respond to DM: {e}')
+
 			return
-
-		response = {
-			'rawtext': [{
-				'text': f'<{message.author}> {message.content}'
-			}]
-		}
-
-		response_text = 'tellraw @a ' + json.dumps(response).replace('\\','\\\\').replace('$', '\\$') + '\\n'
-
-		command = ['screen', '-r', 'flatearth', '-p', '0', '-X', 'stuff', response_text]
-		subprocess.run(command)
 
 
 INTENTS = discord.Intents.default()
