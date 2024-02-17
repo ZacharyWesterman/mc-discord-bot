@@ -7,7 +7,10 @@ import subprocess
 import requests
 from pathlib import Path
 
-DISCORD_TOKEN = open(str(Path(__file__).parent) + '/secret.txt', 'r').read().strip()
+with open(str(Path(__file__).parent) + '/secrets.json', 'r') as fp:
+	data = json.load(fp)
+	DISCORD_TOKEN = data['token']
+	GUILD_ID = data['guild']
 
 def log(msg: str) -> None:
 	print(msg, flush=True)
@@ -29,6 +32,7 @@ class DiscordClient(discord.Client):
 	async def on_ready(self):
 		print('Logged in as ', self.user)
 		self.sync_status_message.start()
+		await TREE.sync(guild=discord.Object(id=GUILD_ID))
 
 	@tasks.loop(seconds = 60)
 	async def sync_status_message(self):
@@ -72,8 +76,15 @@ class DiscordClient(discord.Client):
 
 			return
 
-
 INTENTS = discord.Intents.default()
 CLIENT = DiscordClient(intents=INTENTS)
+TREE = discord.app_commands.CommandTree(CLIENT)
+
+
+@TREE.command(name="test_command", description="this is a test command")
+async def slash_command(interaction: discord.Interaction):
+	await interaction.response.send_message("test response")
+
+
 CLIENT.run(DISCORD_TOKEN)
 
