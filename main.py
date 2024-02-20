@@ -6,6 +6,7 @@ import json
 import subprocess
 import requests
 from pathlib import Path
+from mcstatus import BedrockServer
 
 with open(str(Path(__file__).parent) + '/secrets.json', 'r') as fp:
 	data = json.load(fp)
@@ -34,28 +35,21 @@ class DiscordClient(discord.Client):
 		self.sync_status_message.start()
 		await TREE.sync(guild=discord.Object(id=GUILD_ID))
 
-	@tasks.loop(seconds = 60)
+		self.activity = None
+
+	@tasks.loop(seconds = 15)
 	async def sync_status_message(self):
-		activity = 'ERROR'
-		status = discord.Status.do_not_disturb
+		status = MINECRAFT.status()
+		count = status.players.online
 
-		#Side note, this data is cached for 5 minutes. Might want a more accurate way to do this...
-		res = requests.get('https://api.mcsrvstat.us/bedrock/2/mc.skrunky.com')
-		if res.status_code == 200:
-			data = json.loads(res.text)
-			count = data.get('players',{}).get('online')
-
-			if count == 0:
-				status = discord.Status.idle
-				activity = 'an empty server'
-			else:
-				status = discord.Status.online
-				activity = str(count) + ' player' + ('' if count == 1 else 's')
-
-
-		if activity is None:
-			await self.change_presence(status = status)
+		if count == 0:
+			status = discord.Status.idle
+			activity = 'an empty server'
 		else:
+			status = discord.Status.online
+			activity = str(count) + ' player' + ('' if count == 1 else 's')
+
+		if self.activity != activity:
 			act = discord.Activity(name = activity, type = discord.ActivityType.watching)
 			await self.change_presence(status = status, activity = act)
 
@@ -75,6 +69,8 @@ class DiscordClient(discord.Client):
 				log(f'Failed to respond to DM: {e}')
 
 			return
+
+MINECRAFT = BedrockServer.lookup('127.0.0.1')
 
 INTENTS = discord.Intents.default()
 CLIENT = DiscordClient(intents=INTENTS)

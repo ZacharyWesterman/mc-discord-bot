@@ -10,6 +10,7 @@ readme = "README.md"
 python = "^3.10"
 requests = "^2.31.0"
 discord = "^2.3.2"
+mcstatus = "^11.1.1"
 
 
 [build-system]
