@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "mc-discord-bot"
+version = "0.1.0"
+description = "A Discord bot for interacting with a Minecraft Discord server"
+authors = ["Zachary Westerman <westerman.zachary@gmail.com>"]
+license = "GPL-3.0"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+requests = "^2.31.0"
+discord = "^2.3.2"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
