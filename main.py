@@ -2,9 +2,8 @@
 
 import discord
 from discord.ext import tasks
-import json
+import json, re
 import subprocess
-import requests
 from pathlib import Path
 from mcstatus import BedrockServer
 
@@ -12,6 +11,33 @@ with open(str(Path(__file__).parent) + '/secrets.json', 'r') as fp:
 	data = json.load(fp)
 	DISCORD_TOKEN = data['token']
 	GUILD_ID = data['guild']
+
+def read_all_messages() -> dict:
+	try:
+		with open(str(Path(__file__).parent) + '/messages.json', 'r') as fp:
+			return json.load(fp)
+	except FileNotFoundError:
+		return {}
+
+def read_message(id: int) -> dict:
+	return read_all_messages().get(str(id))
+
+def create_message(id: int, msg: dict) -> None:
+	msgs = read_all_messages()
+
+	with open(str(Path(__file__).parent) + '/messages.json', 'w') as fp:
+		msgs[str(id)] = msg
+		json.dump(msgs, fp)
+
+def update_message_emojis(id: int, emojis: list[str]) -> None:
+	msgs = read_all_messages()
+
+	if str(id) not in msgs:
+		return
+
+	with open(str(Path(__file__).parent) + '/messages.json', 'w') as fp:
+		msgs[str(id)]['emojis'] = emojis
+		json.dump(msgs, fp)
 
 def log(msg: str) -> None:
 	print(msg, flush=True)
@@ -33,7 +59,6 @@ class DiscordClient(discord.Client):
 	async def on_ready(self):
 		print('Logged in as ', self.user)
 		self.sync_status_message.start()
-		await TREE.sync(guild=discord.Object(id=GUILD_ID))
 
 		self.activity = None
 
@@ -53,7 +78,7 @@ class DiscordClient(discord.Client):
 			act = discord.Activity(name = activity, type = discord.ActivityType.watching)
 			await self.change_presence(status = status, activity = act)
 
-	async def on_message(self, message):
+	async def on_message(self, message: discord.Message):
 		#Don't respond to ourselves
 		if message.author == self.user:
 			return
@@ -70,17 +95,90 @@ class DiscordClient(discord.Client):
 
 			return
 
+		if message.channel.name != 'games':
+			return
+
+		#Check if the message has two consecutive integers in it. If so, it's most likely coordinates
+		pattern = re.compile(r'(-?\b([0-9]+)([, ]+|$)){2,}')
+		match = pattern.search(message.content)
+
+		if match:
+			begin, end = match.span(0)
+			pre, mid, post = message.content[0:begin], message.content[begin:end], message.content[end::]
+
+			text = f'{pre} {post}'.replace(',', '').replace(':', '').strip().upper()
+			coords = [int(i) for i in mid.replace(',', ' ').split()]
+
+			msg = {
+				'emojis': [],
+				'text': message.content,
+				'label': text,
+				'coords': coords,
+				'author': message.author.id,
+			}
+			create_message(message.id, msg)
+
+			for i in ['overworld', 'nether', 'end']:
+				for emoji in message.guild.emojis:
+					if emoji.name == i:
+						try:
+							await message.add_reaction(emoji)
+						except Exception as e:
+							log(f'Failed to react with custom emoji: {e}')
+						break
+
+	async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
+		if payload.emoji.name not in ['overworld', 'nether', 'end']:
+			return
+
+		#Ignore reactions from this bot
+		if payload.user_id == self.user.id:
+			return
+
+		msg = read_message(payload.message_id)
+		if msg is None:
+			return
+
+		#Ignore users reacting to someone else's message
+		if msg['author'] != payload.user_id:
+			return
+
+		if payload.emoji.name not in msg['emojis']:
+			msg['emojis'] += [payload.emoji.name]
+
+		update_message_emojis(payload.message_id, msg['emojis'])
+
+		#Remove automatic reactions
+		channel = await self.fetch_channel(payload.channel_id)
+		message = await channel.fetch_message(payload.message_id)
+		for i in ['overworld', 'nether', 'end']:
+			for emoji in message.guild.emojis:
+				if emoji.name == i:
+					try:
+						await message.remove_reaction(emoji, self.user)
+					except Exception as e:
+						log(f'Failed to react with custom emoji: {e}')
+					break
+
+	async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent):
+		if payload.emoji.name not in ['overworld', 'nether', 'end']:
+			return
+
+		if payload.user_id == self.user.id:
+			return
+
+		msg = read_message(payload.message_id)
+		if msg is None:
+			return
+
+		if msg['author'] != payload.user_id:
+			return
+
+		msg['emojis'].remove(payload.emoji.name)
+		update_message_emojis(payload.message_id, msg['emojis'])
+
 MINECRAFT = BedrockServer.lookup('127.0.0.1')
 
-INTENTS = discord.Intents.default()
+INTENTS = discord.Intents.all()
 CLIENT = DiscordClient(intents=INTENTS)
-TREE = discord.app_commands.CommandTree(CLIENT)
-
-
-@TREE.command(name="test_command", description="this is a test command")
-async def slash_command(interaction: discord.Interaction):
-	await interaction.response.send_message("test response")
-
-
 CLIENT.run(DISCORD_TOKEN)
-
