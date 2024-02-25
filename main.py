@@ -15,13 +15,6 @@ with open(str(Path(__file__).parent) + '/secrets.json', 'r') as fp:
 
 db = MongoClient().flatearth
 
-def read_all_messages() -> dict:
-	try:
-		with open(str(Path(__file__).parent) + '/messages.json', 'r') as fp:
-			return json.load(fp)
-	except FileNotFoundError:
-		return {}
-
 def read_message(id: int) -> dict:
 	return db.messages.find_one({'message_id': id})
 
