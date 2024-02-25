@@ -6,11 +6,14 @@ import json, re
 import subprocess
 from pathlib import Path
 from mcstatus import BedrockServer
+from pymongo import MongoClient
 
 with open(str(Path(__file__).parent) + '/secrets.json', 'r') as fp:
 	data = json.load(fp)
 	DISCORD_TOKEN = data['token']
 	GUILD_ID = data['guild']
+
+db = MongoClient().flatearth
 
 def read_all_messages() -> dict:
 	try:
@@ -20,24 +23,16 @@ def read_all_messages() -> dict:
 		return {}
 
 def read_message(id: int) -> dict:
-	return read_all_messages().get(str(id))
+	return db.messages.find_one({'message_id': id})
 
 def create_message(id: int, msg: dict) -> None:
-	msgs = read_all_messages()
-
-	with open(str(Path(__file__).parent) + '/messages.json', 'w') as fp:
-		msgs[str(id)] = msg
-		json.dump(msgs, fp)
+	msg['message_id'] = id
+	db.messages.insert_one(msg)
 
 def update_message_emojis(id: int, emojis: list[str]) -> None:
-	msgs = read_all_messages()
-
-	if str(id) not in msgs:
-		return
-
-	with open(str(Path(__file__).parent) + '/messages.json', 'w') as fp:
-		msgs[str(id)]['emojis'] = emojis
-		json.dump(msgs, fp)
+	db.messages.update_one({'message_id': id}, {'$set': {
+		'emojis': emojis,
+	}})
 
 def log(msg: str) -> None:
 	print(msg, flush=True)
