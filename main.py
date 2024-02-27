@@ -20,11 +20,13 @@ def read_message(id: int) -> dict:
 
 def create_message(id: int, msg: dict) -> None:
 	msg['message_id'] = id
+	msg['updated'] = False
 	db.messages.insert_one(msg)
 
 def update_message_emojis(id: int, emojis: list[str]) -> None:
 	db.messages.update_one({'message_id': id}, {'$set': {
 		'emojis': emojis,
+		'updated': True,
 	}})
 
 def log(msg: str) -> None:
