@@ -34,6 +34,16 @@ def log(msg: str) -> None:
 
 # Fake a player message
 def send_message_minecraft(author: str, content: str) -> None:
+	repl = {
+		'“': '"',
+		'”': '"',
+		'‘': "'",
+		'’': "'",
+		'’': "'",
+	}
+	for i in repl:
+		content = content.replace(i, repl[i])
+
 	response = {
 		'rawtext': [{
 			'text': f'<{author}> {content}'
