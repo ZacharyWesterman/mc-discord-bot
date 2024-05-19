@@ -110,6 +110,61 @@ class DiscordClient(discord.Client):
 		if message.author == self.user:
 			return
 
+		async def players_cmd(command: list[str]):
+			status = MINECRAFT.status()
+			count = status.players.online
+			plural = 's' if count != 1 else ''
+			verb = 'are' if count != 1 else 'is'
+			response = f'There {verb} {count} player{plural} logged in currently.'
+			if count:
+				response += '\n'.join([f'> {i}' for i in status.players.sample])
+
+			await message.channel.send(response)
+
+		valid_commands = {
+			'help': {
+				'info': 'Display this help message.',
+				'action': None,
+			},
+			'players': {
+				'info': 'List what players are logged in.',
+				'action': players_cmd,
+			},
+		}
+
+		async def help_cmd(command: list[str]):
+			response = 'Here is a list of available commands. Note that you must put a `/` or `!` in front of the command, or you can @ me. For example, `help @mc.skrunky.com` and `!help` are both valid.\n'
+			response += '\n'.join(f'* {i}: {valid_commands[i]["info"]}' for i in valid_commands)
+			await message.channel.send(response)
+
+		valid_commands['help']['action'] = help_cmd
+
+		#If someone sent a command, handle that
+		this_command = None
+		msg = None
+		if f'<@{self.user.id}>' in message.content:
+			msg = message.content.replace(f'<@{self.user.id}>', '')
+			this_command = msg.strip().split(' ')
+		else:
+			this_command = message.content.strip().split(' ')
+			if len(this_command) and this_command[0][1::] in valid_commands:
+				this_command[0] = this_command[0][1::]
+				msg = message.content
+
+		if msg is not None:
+			if len(this_command) == 0:
+				this_command = ['help']
+
+			if this_command[0] not in valid_commands:
+				await message.channel.send('Unknown command. Type `@mc.skrunky.com`, `!help` or `/help` for a list of commands.')
+				return
+
+			action = valid_commands[ this_command[0] ]['action']
+			await action(this_command)
+
+
+		return
+
 		if isinstance(message.channel, discord.channel.DMChannel):
 			#When a user DMs the bot, react to the message to indicate that their message has been sent to the server
 			log(f'Received DM from {message.author}: {message.content}')
