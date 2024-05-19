@@ -110,6 +110,7 @@ class DiscordClient(discord.Client):
 		if message.author == self.user:
 			return
 
+		#Doesn't work, need to find some other way to get the player list!
 		async def players_cmd(command: list[str]):
 			status = MINECRAFT.status()
 			count = status.players.online
@@ -126,10 +127,10 @@ class DiscordClient(discord.Client):
 				'info': 'Display this help message.',
 				'action': None,
 			},
-			'players': {
-				'info': 'List what players are logged in.',
-				'action': players_cmd,
-			},
+			# 'players': {
+			# 	'info': 'List what players are logged in.',
+			# 	'action': players_cmd,
+			# },
 		}
 
 		async def help_cmd(command: list[str]):
