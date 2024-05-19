@@ -30,6 +30,29 @@ def update_message_emojis(id: int, emojis: list[str]) -> None:
 		'updated': True,
 	}})
 
+#Returns false if another user already has that alias
+def set_alias(user_id: str, alias: str) -> bool:
+	if db.users.find_one({'alias', alias}):
+		return False
+
+	db.users.update_one({'user_id': user_id}, {'$set': {
+		'alias': alias,
+	}}, upsert = True)
+	return True
+
+#Returns false if no alias for user was found
+def delete_alias(user_id: str) -> bool:
+	if not db.users.find_one({'user_id': user_id}):
+		return False
+
+	db.users.delete_one({'user_id': user_id})
+	return True
+
+def get_alias(user_id: str) -> str|None:
+	if data := db.users.find_one({'user_id': user_id}):
+		return data.get('alias')
+	return None
+
 def log(msg: str) -> None:
 	print(msg, flush=True)
 
@@ -146,6 +169,28 @@ class DiscordClient(discord.Client):
 
 			await message.channel.send(response)
 
+		async def alias_cmd(command: list[str]):
+			if len(command) < 2:
+				response = 'Please choose an alias, e.g. `/alias MinecraftPlayer123`.'
+			elif command[1] == 'remove':
+				if delete_alias(message.author.id):
+					response = 'Alias sucessfully removed.'
+				else:
+					response = 'No alias was found.'
+			elif command[1] == 'help':
+				response = '\n'.join([
+					'Set the username that players see when you send messages to the Flat Earth.',
+					'* `!alias help`: Display this help message.',
+					'* `!alias remove`: Remove your alias, setting username to match your discord name.',
+					'* `!alias {anything else}`: Sets your alias to the chosen name.',
+				])
+			else:
+				if set_alias(message.author.id, command[1]):
+					response = 'Alias has been updated.'
+				else:
+					response = 'Failed to set alias: a different person is already using that name.'
+
+			await message.channel.send(response)
 
 		valid_commands = {
 			'help': {
@@ -156,11 +201,17 @@ class DiscordClient(discord.Client):
 				'info': 'List what players are logged in.',
 				'action': players_cmd,
 			},
+			'alias': {
+				'info': 'Set the username that players see when you send messages to the Flat Earth.',
+				'action': alias_cmd,
+			},
 		}
 
 		async def help_cmd(command: list[str]):
 			response = 'Here is a list of available commands. Note that you must put a `/` or `!` in front of the command, or you can @ me. For example, `help @mc.skrunky.com` and `!help` are both valid.\n'
 			response += '\n'.join(f'* {i}: {valid_commands[i]["info"]}' for i in valid_commands)
+			response += '\nMost commands have help text to let you know how to use them, e.g. `!alias help`.'
+			response += '\nYou can also DM me to send messages directly to the Minecraft server.'
 			await message.channel.send(response)
 
 		valid_commands['help']['action'] = help_cmd
@@ -192,8 +243,14 @@ class DiscordClient(discord.Client):
 
 		if isinstance(message.channel, discord.channel.DMChannel):
 			#When a user DMs the bot, react to the message to indicate that their message has been sent to the server
-			log(f'Received DM from {message.author}: {message.content}')
-			send_message_minecraft(message.author, message.content)
+			alias = get_alias(message.author.id)
+			if alias is None:
+				alias = str(message.author)
+				log(f'Received DM from {message.author}: {message.content}')
+			else:
+				log(f'Received DM from {message.author}({alias}): {message.content}')
+
+			send_message_minecraft(alias, message.content)
 
 			try:
 				await message.add_reaction('✅')
