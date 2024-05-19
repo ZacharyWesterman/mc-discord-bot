@@ -110,6 +110,10 @@ class DiscordClient(discord.Client):
 		if message.author == self.user:
 			return
 
+		#Only respond to commands & messages if this is a DM, or it's in the games channel
+		if message.channel.name != 'games' and not isinstance(message.channel, discord.channel.DMChannel):
+			return
+
 		async def players_cmd(command: list[str]):
 			#Scan most recent log file for list of online players
 
