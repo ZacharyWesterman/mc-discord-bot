@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 from mcstatus import BedrockServer
 from pymongo import MongoClient
+from datetime import datetime
 
 with open(str(Path(__file__).parent) + '/secrets.json', 'r') as fp:
 	data = json.load(fp)
@@ -31,6 +32,9 @@ def update_message_emojis(id: int, emojis: list[str]) -> None:
 
 def log(msg: str) -> None:
 	print(msg, flush=True)
+
+def mc_command(text: str) -> None:
+	subprocess.run(['screen', '-r', 'flatearth', '-p', '0', '-X', 'stuff', text.replace('\\','\\\\').replace('$', '\\$') + '\\n'])
 
 # Fake a player message
 def send_message_minecraft(author: str, content: str) -> None:
@@ -76,11 +80,7 @@ def send_message_minecraft(author: str, content: str) -> None:
 			'text': f'<{author}> {content}'
 		}]
 	}
-
-	response_text = 'tellraw @a ' + json.dumps(response).replace('\\','\\\\').replace('$', '\\$') + '\\n'
-
-	command = ['screen', '-r', 'flatearth', '-p', '0', '-X', 'stuff', response_text]
-	subprocess.run(command)
+	mc_command('tellraw @a ' + json.dumps(response))
 
 class DiscordClient(discord.Client):
 	async def on_ready(self):
@@ -110,27 +110,48 @@ class DiscordClient(discord.Client):
 		if message.author == self.user:
 			return
 
-		#Doesn't work, need to find some other way to get the player list!
 		async def players_cmd(command: list[str]):
-			status = MINECRAFT.status()
-			count = status.players.online
-			plural = 's' if count != 1 else ''
-			verb = 'are' if count != 1 else 'is'
-			response = f'There {verb} {count} player{plural} logged in currently.'
-			if count:
-				response += '\n'.join([f'> {i}' for i in status.players.sample])
+			#Scan most recent log file for list of online players
+
+			now = datetime.now().strftime('%Y.%m.%d.')
+			logfile_path = 'NONE'
+			for i in Path('../minecraftbe/flatearth/logs/').glob(f'flatearth.{now}*'):
+				logfile_path = str(i)
+
+			try:
+				with open(logfile_path, 'r') as fp:
+					lines = [ i for i in fp.readlines() if ' INFO] Player ' in i ]
+
+					players = {}
+					for i in range(len(lines) - 1, 0, -1):
+						info = lines[i].split(' ')
+						action, player = info[6][:-1], info[7][:-1]
+						if player not in players and action != 'Spawned':
+							players[player] = (action == 'connected')
+
+					player_list = [i for i in players if players[i]]
+					count = len(player_list)
+					plural = 's' if count != 1 else ''
+					verb = 'are' if count != 1 else 'is'
+					response = f'There {verb} {count} player{plural} logged in currently.'
+					if count:
+						response += ''.join([f'\n> {i}' for i in player_list])
+
+			except FileNotFoundError:
+				response = f'ERROR: Failed to get list of users: cannot open server log.\n{logfile_path}'
 
 			await message.channel.send(response)
+
 
 		valid_commands = {
 			'help': {
 				'info': 'Display this help message.',
 				'action': None,
 			},
-			# 'players': {
-			# 	'info': 'List what players are logged in.',
-			# 	'action': players_cmd,
-			# },
+			'players': {
+				'info': 'List what players are logged in.',
+				'action': players_cmd,
+			},
 		}
 
 		async def help_cmd(command: list[str]):
@@ -153,7 +174,7 @@ class DiscordClient(discord.Client):
 				msg = message.content
 
 		if msg is not None:
-			if len(this_command) == 0:
+			if len(this_command) == 0 or this_command[0] == '':
 				this_command = ['help']
 
 			if this_command[0] not in valid_commands:
@@ -162,9 +183,8 @@ class DiscordClient(discord.Client):
 
 			action = valid_commands[ this_command[0] ]['action']
 			await action(this_command)
+			return
 
-
-		return
 
 		if isinstance(message.channel, discord.channel.DMChannel):
 			#When a user DMs the bot, react to the message to indicate that their message has been sent to the server
