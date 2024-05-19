@@ -32,12 +32,17 @@ def update_message_emojis(id: int, emojis: list[str]) -> None:
 
 #Returns false if another user already has that alias
 def set_alias(user_id: str, alias: str) -> bool:
-	if db.users.find_one({'alias', alias}):
+	if user := db.users.find_one({'alias': alias}):
+		if user.get('user_id') == user_id:
+			db.users.update_one({'user_id': user_id}, {'$set': {'alias': alias}})
+			return True
+
 		return False
 
-	db.users.update_one({'user_id': user_id}, {'$set': {
+	db.users.insert_one({
+		'user_id': user_id,
 		'alias': alias,
-	}}, upsert = True)
+	})
 	return True
 
 #Returns false if no alias for user was found
@@ -134,7 +139,7 @@ class DiscordClient(discord.Client):
 			return
 
 		#Only respond to commands & messages if this is a DM, or it's in the games channel
-		if message.channel.name != 'games' and not isinstance(message.channel, discord.channel.DMChannel):
+		if not isinstance(message.channel, discord.channel.DMChannel) and message.channel.name != 'games':
 			return
 
 		async def players_cmd(command: list[str]):
@@ -171,10 +176,16 @@ class DiscordClient(discord.Client):
 
 		async def alias_cmd(command: list[str]):
 			if len(command) < 2:
-				response = 'Please choose an alias, e.g. `/alias MinecraftPlayer123`.'
+				response = 'Please choose an alias, e.g. `!alias MinecraftPlayer123`.\nAlternatively, you can type `!alias help` for usage info.'
 			elif command[1] == 'remove':
 				if delete_alias(message.author.id):
 					response = 'Alias sucessfully removed.'
+				else:
+					response = 'No alias was found.'
+			elif command[1] == 'show':
+				alias = get_alias(message.author.id)
+				if alias:
+					response = f'Current alias: {alias}'
 				else:
 					response = 'No alias was found.'
 			elif command[1] == 'help':
@@ -182,6 +193,7 @@ class DiscordClient(discord.Client):
 					'Set the username that players see when you send messages to the Flat Earth.',
 					'* `!alias help`: Display this help message.',
 					'* `!alias remove`: Remove your alias, setting username to match your discord name.',
+					'* `!alias show`: Show your current alias.',
 					'* `!alias {anything else}`: Sets your alias to the chosen name.',
 				])
 			else:
@@ -209,7 +221,7 @@ class DiscordClient(discord.Client):
 
 		async def help_cmd(command: list[str]):
 			response = 'Here is a list of available commands. Note that you must put a `/` or `!` in front of the command, or you can @ me. For example, `help @mc.skrunky.com` and `!help` are both valid.\n'
-			response += '\n'.join(f'* {i}: {valid_commands[i]["info"]}' for i in valid_commands)
+			response += '\n'.join(f'* `{i}`: {valid_commands[i]["info"]}' for i in valid_commands)
 			response += '\nMost commands have help text to let you know how to use them, e.g. `!alias help`.'
 			response += '\nYou can also DM me to send messages directly to the Minecraft server.'
 			await message.channel.send(response)
