@@ -30,6 +30,15 @@ def update_message_emojis(id: int, emojis: list[str]) -> None:
 		'updated': True,
 	}})
 
+def get_logfile_path() -> str|None:
+	now = datetime.now().strftime('%Y.%m.%d.')
+	logfile_path = None
+	for i in Path('../minecraftbe/flatearth/logs/').glob(f'flatearth.{now}*'):
+		if logfile_path is None or str(i) > logfile_path:
+			logfile_path = str(i)
+
+	return logfile_path
+
 #Returns false if another user already has that alias
 def set_alias(user_id: str, alias: str) -> bool:
 	if user := db.users.find_one({'alias': alias}):
@@ -145,10 +154,7 @@ class DiscordClient(discord.Client):
 		async def players_cmd(command: list[str]):
 			#Scan most recent log file for list of online players
 
-			now = datetime.now().strftime('%Y.%m.%d.')
-			logfile_path = 'NONE'
-			for i in Path('../minecraftbe/flatearth/logs/').glob(f'flatearth.{now}*'):
-				logfile_path = str(i)
+			logfile_path = get_logfile_path()
 
 			try:
 				with open(logfile_path, 'r') as fp:
