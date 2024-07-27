@@ -67,6 +67,13 @@ def get_alias(user_id: str) -> str|None:
 		return data.get('alias')
 	return None
 
+def get_whitelist() -> list[str]:
+	with open('../minecraftbe/flatearth/allowlist.json') as fp:
+		return [i.get('name', 'ERROR') for i in json.load(fp)]
+
+def unauthorized_msg() -> str:
+	return 'You are not authorized to perform that action.'
+
 def log(msg: str) -> None:
 	print(msg, flush=True)
 
@@ -151,6 +158,8 @@ class DiscordClient(discord.Client):
 		if not isinstance(message.channel, discord.channel.DMChannel) and message.channel.name != 'games':
 			return
 
+		user_is_admin = db.admins.find_one({'id': str(message.author.id)})
+
 		async def players_cmd(command: list[str]):
 			#Scan most recent log file for list of online players
 
@@ -214,6 +223,77 @@ class DiscordClient(discord.Client):
 
 			await message.channel.send(response)
 
+		async def whitelist_cmd(command: list[str]):
+			whitelist = get_whitelist()
+
+			if len(command) < 2:
+				response = f'{len(whitelist)} players are whitelisted:\n> ' + '\n> '.join(whitelist)
+			elif command[1] == 'help':
+				msgs = [
+					'View and manage whitelisted players.',
+					'* `!whitelist`: List all whitelisted players.',
+					'* `!whitelist help`: Display this help message.',
+				]
+				if user_is_admin:
+					msgs += [
+						'* `!whitelist remove {username}`: Remove a player from the whitelist.',
+						'* `!whitelist {username}`: Add a player to the whitelist.',
+					]
+
+				response = '\n'.join(msgs)
+			elif command[1] == 'remove':
+				if user_is_admin:
+					if len(command) < 3:
+						response = 'ERROR: No player name specified. Correct usage is `!whitelist remove {username}`.'
+					elif command[2] not in whitelist:
+						response = f'ERROR: Player `{command[2]}` is not in the whitelist.'
+					else:
+						#Remove the user from the whitelist
+						mc_command(f'whitelist remove {command[2]}')
+						response = f'Removed player `{command[2]}` from the whitelist.'
+				else:
+					response = unauthorized_msg()
+			else:
+				if user_is_admin:
+					if command[1] in whitelist:
+						response = f'ERROR: Player `{command[1]}` is already in the whitelist.'
+					else:
+						#Add the user to the whitelist
+						mc_command(f'whitelist add {command[1]}')
+						response = f'Added player `{command[1]}` to the whitelist.'
+				else:
+					response = unauthorized_msg()
+
+			await message.channel.send(response)
+
+		async def admin_cmd(command: list[str]):
+			pass #Not really sure what to do with this...
+
+		async def message_cmd(command: list[str]):
+			#When a user DMs the bot, react to the message to indicate that their message has been sent to the server
+
+			if len(command) < 2 or command[1] == 'help':
+				response = '\n'.join([
+					'To send a message to the Flat Earth, specify some text like `!say your message here`.',
+					'Alternatively, you can DM me and all messages will go directly to the Flat Earth.',
+				])
+				await message.channel.send(response)
+
+			else:
+				alias = get_alias(message.author.id)
+				if alias is None:
+					alias = str(message.author)
+					log(f'Received DM from {message.author}: {message.content}')
+				else:
+					log(f'Received DM from {message.author}({alias}): {message.content}')
+
+				send_message_minecraft(alias, ' '.join(command[1::]))
+
+				try:
+					await message.add_reaction('✅')
+				except Exception as e:
+					log(f'Failed to respond to DM: {e}')
+
 		valid_commands = {
 			'help': {
 				'info': 'Display this help message.',
@@ -227,11 +307,24 @@ class DiscordClient(discord.Client):
 				'info': 'Set the username that players see when you send messages to the Flat Earth.',
 				'action': alias_cmd,
 			},
+			'whitelist': {
+				'info': 'Show whitelist info or add/remove players from the whitelist.',
+				'action': whitelist_cmd,
+			},
+			'say': {
+				'info': 'Send a message to the Flat Earth.',
+				'action': message_cmd,
+			},
+			# 'admin': {
+			# 	'info': 'Add or remove discord users from making admin actions related to the Flat Earth.',
+			# 	'action': admin_cmd,
+			# 	'admin_only': True,
+			# }
 		}
 
 		async def help_cmd(command: list[str]):
 			response = 'Here is a list of available commands. Note that you must put a `/` or `!` in front of the command, or you can @ me. For example, `help @mc.skrunky.com` and `!help` are both valid.\n'
-			response += '\n'.join(f'* `{i}`: {valid_commands[i]["info"]}' for i in valid_commands)
+			response += '\n'.join(f'* `{i}`: {valid_commands[i]["info"]}' for i in valid_commands if user_is_admin or not valid_commands[i].get('admin_only'))
 			response += '\nMost commands have help text to let you know how to use them, e.g. `!alias help`.'
 			response += '\nYou can also DM me to send messages directly to the Minecraft server.'
 			await message.channel.send(response)
@@ -254,7 +347,7 @@ class DiscordClient(discord.Client):
 			if len(this_command) == 0 or this_command[0] == '':
 				this_command = ['help']
 
-			if this_command[0] not in valid_commands:
+			if this_command[0] not in valid_commands or (valid_commands[this_command[0]].get('admin_only') and not user_is_admin):
 				await message.channel.send('Unknown command. Type `@mc.skrunky.com`, `!help` or `/help` for a list of commands.')
 				return
 
@@ -264,21 +357,7 @@ class DiscordClient(discord.Client):
 
 
 		if isinstance(message.channel, discord.channel.DMChannel):
-			#When a user DMs the bot, react to the message to indicate that their message has been sent to the server
-			alias = get_alias(message.author.id)
-			if alias is None:
-				alias = str(message.author)
-				log(f'Received DM from {message.author}: {message.content}')
-			else:
-				log(f'Received DM from {message.author}({alias}): {message.content}')
-
-			# send_message_minecraft(alias, message.content)
-
-			try:
-				await message.add_reaction('✅')
-			except Exception as e:
-				log(f'Failed to respond to DM: {e}')
-
+			await message_cmd(['message', message.content])
 			return
 
 		if message.channel.name != 'games':
