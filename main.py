@@ -44,7 +44,7 @@ def get_valid_messages(start: int, count: int) -> list[dict]:
 	return [
 		i for i in db.messages.find({
 			'emojis.0': {'$exists': True},
-		}).skip(start).limit(count)
+		}).sort({'label': 1}).skip(start).limit(count)
 	]
 
 def count_valid_messages() -> int:
