@@ -30,14 +30,14 @@ def update_message_emojis(id: int, emojis: list[str]) -> None:
 		'updated': True,
 	}})
 
-def get_logfile_path() -> str|None:
+def get_logfile_paths() -> list[str]:
 	now = datetime.now().strftime('%Y.%m.%d.')
-	logfile_path = None
+	logfile_paths = []
 	for i in Path('../minecraftbe/flatearth/logs/').glob(f'flatearth.{now}*'):
-		if logfile_path is None or str(i) > logfile_path:
-			logfile_path = str(i)
+		if len(logfile_paths) == 0 or str(i) > logfile_paths[-1]:
+			logfile_paths += [str(i)]
 
-	return logfile_path
+	return logfile_paths
 
 #Returns false if another user already has that alias
 def set_alias(user_id: str, alias: str) -> bool:
@@ -154,29 +154,33 @@ class DiscordClient(discord.Client):
 		async def players_cmd(command: list[str]):
 			#Scan most recent log file for list of online players
 
-			logfile_path = get_logfile_path()
+			logfile_paths = get_logfile_paths()
+			players = {}
 
-			try:
-				with open(logfile_path, 'r') as fp:
-					lines = [ i for i in fp.readlines() if ' INFO] Player ' in i ]
+			for logfile_path in logfile_paths:
+				try:
+					with open(logfile_path, 'r') as fp:
+						lines = [ i for i in fp.readlines() if ' INFO] Player ' in i ]
 
-					players = {}
-					for i in range(len(lines) - 1, 0, -1):
-						info = lines[i].split(' ')
-						action, player = info[6][:-1], info[7][:-1]
-						if player not in players and action != 'Spawned':
-							players[player] = (action == 'connected')
+						for i in range(len(lines) - 1, 0, -1):
+							info = lines[i].split(' ')
+							action, player = info[6][:-1], info[7][:-1]
+							if player not in players and action != 'Spawned':
+								players[player] = (action == 'connected')
 
-					player_list = [i for i in players if players[i]]
-					count = len(player_list)
-					plural = 's' if count != 1 else ''
-					verb = 'are' if count != 1 else 'is'
-					response = f'There {verb} {count} player{plural} logged in currently.'
-					if count:
-						response += ''.join([f'\n> {i}' for i in player_list])
+				except FileNotFoundError:
+					pass
 
-			except FileNotFoundError:
-				response = f'ERROR: Failed to get list of users: cannot open server log.\n{logfile_path}'
+			if len(logfile_paths) == 0:
+				response = f'ERROR: Failed to get list of users: cannot open server log.'
+			else:
+				player_list = [i for i in players if players[i]]
+				count = len(player_list)
+				plural = 's' if count != 1 else ''
+				verb = 'are' if count != 1 else 'is'
+				response = f'There {verb} {count} player{plural} logged in currently.'
+				if count:
+					response += ''.join([f'\n> {i}' for i in player_list])
 
 			await message.channel.send(response)
 
@@ -268,7 +272,7 @@ class DiscordClient(discord.Client):
 			else:
 				log(f'Received DM from {message.author}({alias}): {message.content}')
 
-			send_message_minecraft(alias, message.content)
+			# send_message_minecraft(alias, message.content)
 
 			try:
 				await message.add_reaction('✅')
