@@ -8,6 +8,7 @@ from pathlib import Path
 from mcstatus import BedrockServer
 from pymongo import MongoClient
 from datetime import datetime
+import math
 
 with open(str(Path(__file__).parent) + '/secrets.json', 'r') as fp:
 	data = json.load(fp)
@@ -19,16 +20,37 @@ db = MongoClient().flatearth
 def read_message(id: int) -> dict:
 	return db.messages.find_one({'message_id': id})
 
+def count_messages(label: str) -> int:
+	return db.messages.count_documents({'label': label.upper()})
+
+def find_message(label: str) -> dict|None:
+	return db.messages.find_one({'label': label.upper()})
+
 def create_message(id: int, msg: dict) -> None:
 	msg['message_id'] = id
 	msg['updated'] = False
+	msg['created'] = datetime.utcnow()
+	msg['last_updated'] = None
 	db.messages.insert_one(msg)
 
 def update_message_emojis(id: int, emojis: list[str]) -> None:
 	db.messages.update_one({'message_id': id}, {'$set': {
 		'emojis': emojis,
 		'updated': True,
+		'last_updated': datetime.utcnow(),
 	}})
+
+def get_valid_messages(start: int, count: int) -> list[dict]:
+	return [
+		i for i in db.messages.find({
+			'emojis.0': {'$exists': True},
+		}).skip(start).limit(count)
+	]
+
+def count_valid_messages() -> int:
+	return db.messages.count_documents({
+		'emojis.0': {'$exists': True},
+	})
 
 def get_logfile_paths() -> list[str]:
 	now = datetime.now().strftime('%Y.%m.%d.')
@@ -294,6 +316,78 @@ class DiscordClient(discord.Client):
 				except Exception as e:
 					log(f'Failed to respond to DM: {e}')
 
+		async def location_cmd(command: list[str]):
+			MAX_POI = 10
+			msg_ct = count_valid_messages()
+			page_ct = math.ceil(msg_ct / MAX_POI)
+
+			emojis = {
+				'overworld': 'overworld ',
+				'nether': 'nether ',
+				'end': 'end ',
+			}
+			if message.guild:
+				for i in ['overworld', 'nether', 'end']:
+					for emoji in message.guild.emojis:
+						if emoji.name == i:
+							emojis[i] = f'<:{i}:{emoji.id}>'
+
+			if len(command) < 2 or command[1] == 'help':
+				response = '\n'.join([
+					'View or edit points of interest in the Flat Earth.',
+					'Note that points of interest are sorted alphabetically.',
+					'* `!location list`: Show the first page of all points of interest.',
+					'* `!location list {page}`: Show the given page of points of interest.',
+					'* `!location count`: Show the total number of points of interest.',
+					'* `!location delete {location name}`: Delete a point of interest. The name is not case sensitive.',
+					'To add a new point of interest, type a description of the location along with the coordinates, then click an emoji indicating what dimension it\'s in.',
+					'For example, `village -123 456`, `-12,34,-56 mesa biome`, and `deep 123,-456 dark` are all valid points of interest.',
+					'To rename a point of interest, just add a new one with the exact same coordinates.',
+					'To delete a point of interest, remove all your emojis from the original message, or use the `!location delete` command.',
+				])
+			elif command[1] == 'list':
+				response = ''
+				page_number = 1
+
+				if len(command) >= 3:
+					if not re.match(r'^\d+$', command[2]) or int(command[2]) < 1:
+						response += f'Invalid page number `{command[2]}`, defaulting to `1`.\n'
+						page_number = 1
+					else:
+						page_number = int(command[2])
+
+				if page_number > page_ct:
+					response += f'Invalid page number `{page_number}`, defaulting to `{page_ct}`.\n'
+					page_number = page_ct
+
+				response += f'Points of interest (page {page_number}/{page_ct})'
+				for i in get_valid_messages((page_number-1) * MAX_POI, MAX_POI):
+					response += f"\n> `{i.get('label', 'ERR: NO LABEL')}`: {i.get('coords', [])} {''.join(emojis[i] for i in i.get('emojis', []))}"
+			elif command[1] == 'count':
+				response = f'There are {msg_ct} points of interest ({page_ct} page{"s" if page_ct != 1 else ""}).'
+
+			elif command[1] == 'delete' and len(command) < 3:
+				response = 'Please specify a point of interest to delete.'
+
+			elif command[1] == 'delete':
+				label = ' '.join(command[2::])
+				ct = count_messages(label)
+				if ct == 0:
+					response = f'No point of interest was found with label `{label}`.'
+				elif ct > 1:
+					response = 'Multiple points of interest were found with that label... Please talk to zachy this shouldn\'t be happening :('
+				else:
+					msg = find_message(label)
+					if msg is None:
+						response = 'ERROR: PoI exists but also doesnt??? Poke and prod zachy!!'
+					else:
+						update_message_emojis(msg['message_id'], []) #Delete all locations
+						response = f'Deleted `{msg["label"]}`.'
+			else:
+				response = 'ERROR: Invalid command.'
+
+			await message.channel.send(response)
+
 		valid_commands = {
 			'help': {
 				'info': 'Display this help message.',
@@ -315,6 +409,10 @@ class DiscordClient(discord.Client):
 				'info': 'Send a message to the Flat Earth.',
 				'action': message_cmd,
 			},
+			'location': {
+				'info': 'View or edit points of interest in the Flat Earth.',
+				'action': location_cmd,
+			}
 			# 'admin': {
 			# 	'info': 'Add or remove discord users from making admin actions related to the Flat Earth.',
 			# 	'action': admin_cmd,
