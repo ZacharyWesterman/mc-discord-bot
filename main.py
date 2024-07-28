@@ -157,6 +157,7 @@ class DiscordClient(discord.Client):
 
 	@tasks.loop(seconds = 15)
 	async def sync_status_message(self):
+		#Update discord bot status to reflect whether players are online
 		status = MINECRAFT.status()
 		count = status.players.online
 
@@ -170,6 +171,61 @@ class DiscordClient(discord.Client):
 		if self.activity != activity:
 			act = discord.Activity(name = activity, type = discord.ActivityType.watching)
 			await self.change_presence(status = status, activity = act)
+
+		#Fetch any updated messages and convert them into markers
+		updated = {
+			'overworld': False,
+			'nether': False,
+			'end': False,
+		}
+
+		for message in db.messages.find({'updated': True}):
+			x_coord = message['coords'][0]
+			z_coord = message['coords'][1] if len(message['coords']) == 2 else message['coords'][2]
+			label = message['label']
+
+			#Remove any marker on the specified position, in any dimension.
+			for i in db.markers.find({'x': x_coord, 'z': z_coord}):
+				updated[i['dimension']] = True
+			db.markers.delete_many({'x': x_coord, 'z': z_coord})
+
+			#Place the new marker
+			for dimension in message['emojis']:
+				marker = {
+					'x': x_coord,
+					'z': z_coord,
+					'image': 'custom.pin.png',
+					'imageAnchor': [0.5, 1],
+					'imageScale': 0.3,
+					'dimension': dimension,
+					'text': f'{label}',
+					'textColor': 'white',
+					'offsetX': 0,
+					'offsetY': 20,
+					'font': 'bold 20px Calibri,sans serif',
+					'style': 'border: 2px solid red;',
+				}
+				db.markers.insert_one(marker)
+				updated[dimension] = True
+
+			db.messages.update_one({'_id': message['_id']}, {'$set': {'updated': False}})
+
+		#If marker updates involved any change, update only the respective files
+		for dimension in [i for i in updated if updated[i]]:
+			def process(marker: dict) -> dict:
+				del marker['_id']
+				del marker['dimension']
+				return marker
+
+			text = 'UnminedCustomMarkers = { isEnabled: true, markers: ' + json.dumps([
+				process(i) for i in db.markers.find({'dimension': dimension})
+			], indent = 2) + '}'
+
+			with open(f'/var/www/html/maps/{dimension}/custom.markers.js', 'w') as fp:
+				fp.write(text)
+
+			print(f'Updated {dimension} map.', flush=True)
+
 
 	async def on_message(self, message: discord.Message):
 		#Don't respond to ourselves
