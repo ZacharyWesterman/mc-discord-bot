@@ -249,10 +249,11 @@ class DiscordClient(discord.Client):
 					with open(logfile_path, 'r') as fp:
 						lines = [ i for i in fp.readlines() if ' INFO] Player ' in i ]
 
-						for i in range(len(lines) - 1, 0, -1):
+						for i in range(len(lines)):
 							info = lines[i].split(' ')
-							action, player = info[6][:-1], info[7][:-1]
-							if player not in players and action != 'Spawned':
+
+							action, player = info[6][:-1].lower(), info[7][:-1]
+							if action != 'spawned':
 								players[player] = (action == 'connected')
 
 				except FileNotFoundError:
