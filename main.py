@@ -417,7 +417,7 @@ class DiscordClient(discord.Client):
 					response += f'Invalid page number `{page_number}`, defaulting to `{page_ct}`.\n'
 					page_number = page_ct
 
-				response += f'Points of interest (page {page_number}/{page_ct})'
+				response += f'Points of interest, page {page_number} of {page_ct} ({msg_ct} total)'
 				for i in get_valid_messages((page_number-1) * MAX_POI, MAX_POI):
 					response += f"\n> `{i.get('label', 'ERR: NO LABEL')}`: {i.get('coords', [])} {''.join(emojis[i] for i in i.get('emojis', []))}"
 			elif command[1] == 'count':
