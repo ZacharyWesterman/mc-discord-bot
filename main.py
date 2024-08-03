@@ -482,6 +482,7 @@ class DiscordClient(discord.Client):
 			response += '\n'.join(f'* `{i}`: {valid_commands[i]["info"]}' for i in valid_commands if user_is_admin or not valid_commands[i].get('admin_only'))
 			response += '\nMost commands have help text to let you know how to use them, e.g. `!alias help`.'
 			response += '\nYou can also DM me to send messages directly to the Minecraft server.'
+			response += '\nTo view a map of the Flat Earth, or to download copy of the world, go to https://mc.skrunky.com'
 			await message.channel.send(response)
 
 		valid_commands['help']['action'] = help_cmd
