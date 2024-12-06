@@ -1,10 +1,8 @@
 from commands import *
 
-import pafy
 import urllib, random, hashlib, requests, json, functools, re
 from pathlib import Path
-from aiohttp import ClientSession
-from discord import FFmpegPCMAudio, PCMVolumeTransformer
+from discord import FFmpegPCMAudio
 
 _P = re.compile(r'[\[\(][^\)]*[\[\)\]]')
 SUBSONIC_ALBUMID_CACHESZ = 8196
