@@ -144,7 +144,8 @@ class DiscordClient(discord.Client):
 			return
 
 		#Only respond to commands & messages if this is a DM, or it's in the games channel
-		if not isinstance(message.channel, discord.channel.DMChannel) and message.channel.name != 'games':
+		valid_channels = ('games', 'The Abyss')
+		if not isinstance(message.channel, discord.channel.DMChannel) and message.channel.name not in valid_channels:
 			return
 
 		#If someone sent a command, handle that
@@ -176,7 +177,7 @@ class DiscordClient(discord.Client):
 
 		if cmd := commands.get(this_command[0]):
 
-			response = cmd.call(message, this_command[1::])
+			response = await cmd.call(message, this_command[1::])
 			emoji = None
 			if type(response) is tuple:
 				emoji, response = response[1], response[0]

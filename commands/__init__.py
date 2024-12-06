@@ -6,6 +6,7 @@ from typing import Callable
 from pathlib import Path
 from discord import Message
 import subprocess
+import asyncio
 
 commands = {}
 temp_subcommands = {}
@@ -60,7 +61,7 @@ class Command:
 	def default(self, message: Message, command: list[str]) -> str:
 		return bad_subcmd(command[0])
 
-	def call(self, message: Message, command: list[str]) -> str:
+	async def call(self, message: Message, command: list[str]) -> str:
 		self.user_is_admin = bool(self.db.admins.find_one({'id': str(message.author.id)}))
 
 		if not self.user_is_admin and self.admin_only:
@@ -75,7 +76,10 @@ class Command:
 			method = self.default
 			self.sub = 'NO SUB'
 
-		return method(**params)
+		if asyncio.iscoroutinefunction(method):
+			return await method(**params)
+		else:
+			return method(**params)
 
 def get(name: str) -> Command|None:
 	return commands.get(name)
