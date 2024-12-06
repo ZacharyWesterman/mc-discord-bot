@@ -155,7 +155,6 @@ class MusicCmd(Command):
         global PLAYER
         if PLAYER:
             PLAYER.stop()
-            PLAYER = None
 
         if message.author.voice is None:
             return 'This command only works in The Abyss'
@@ -180,7 +179,7 @@ class MusicCmd(Command):
 
         PLAYER.play(FFmpegPCMAudio(url, **FFMPEG_OPTIONS))
         return f"Playing \"{song['title']}\" by {song['artist']}."
-    
+
 @command('stop', 'Stop any music that\'s currently playing')
 class MusicCmd(Command):
     async def default(self, message: Message, command: list[str]) -> str:
@@ -188,3 +187,9 @@ class MusicCmd(Command):
         if PLAYER:
             PLAYER.stop()
             PLAYER = None
+
+            channel = message.author.voice.channel
+            try:
+                await channel.disconnect()
+            except Exception as e:
+                return f'ERROR: {e}'
