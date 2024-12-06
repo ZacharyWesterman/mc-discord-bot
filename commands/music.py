@@ -150,7 +150,7 @@ with open(str(Path(__file__).parent.parent) + '/secrets.json', 'r') as fp:
 FFMPEG_OPTIONS = {'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5','options': '-vn'}
 PLAYER = None
 
-@command('play', 'Play a song from the music server (only works in The Abyss)')
+@command('play', 'Play a song from the music server (only works in The Abyss).')
 class MusicCmd(Command):
     async def default(self, message: Message, command: list[str]) -> str:
         global PLAYER
@@ -158,10 +158,13 @@ class MusicCmd(Command):
             PLAYER.stop()
 
         if message.author.voice is None:
-            return 'This command only works in The Abyss'
+            return 'This command only works in The Abyss.'
+        
+        query = ' '.join([i for i in command if i[0] != '@'])
+        artist = ' '.join([i[1::] for i in command if i[0] == '@'])
 
-        if len(command) == 0:
-            return 'Please input a search term, or "stop" to stop playback.'
+        if len(query) == 0:
+            return 'Please input a search term, or use `!play help` for usage info.'
 
         if not PLAYER:
             channel = message.author.voice.channel
@@ -171,17 +174,29 @@ class MusicCmd(Command):
                 return f'ERROR: {e}'
 
         results = SUBSONIC.search(' '.join(command))
-        songs = results.get('song', [])
-        if not len(songs):
+        song = None
+        for i in results.get('song', []):
+            if artist == '' or artist in i.get('artist', ''):
+                song = i
+                break
+
+        if song is None:
             return 'Song not found.'
 
-        song = songs[0]
         url = SUBSONIC.get_song_url(song['id'])
 
         PLAYER.play(FFmpegPCMAudio(url, **FFMPEG_OPTIONS))
         return f"Playing \"{song['title']}\" by {song['artist']}."
+    
+    @subcommand
+    def help(self, message: Message, command: list[str]) -> str:
+        return '\n'.join([
+            'Search the music server for a song and play the first result.',
+            'You can put @ in front of a word to indicate the artist name, e.g.:',
+            '`!play billie jean @jackson`',
+        ])
 
-@command('stop', 'Stop any music that\'s currently playing')
+@command('stop', 'Stop any music that\'s currently playing.')
 class MusicCmd(Command):
     async def default(self, message: Message, command: list[str]) -> str:
         global PLAYER
