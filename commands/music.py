@@ -160,8 +160,9 @@ class MusicCmd(Command):
         if message.author.voice is None:
             return 'This command only works in The Abyss.'
         
-        query = ' '.join([i for i in command if i[0] != '@'])
+        query = ' '.join([i for i in command if i[0] not in ['@', '-']])
         artist = ' '.join([i[1::] for i in command if i[0] == '@'])
+        negate = [i[1::] for i in command if i[0] == '-']
 
         if len(query) == 0:
             return 'Please input a search term, or use `!play help` for usage info.'
@@ -176,6 +177,9 @@ class MusicCmd(Command):
         results = SUBSONIC.search(' '.join(command))
         song = None
         for i in results.get('song', []):
+            if any([k.lower() in i.get('title', '').lower() for k in negate]):
+                continue
+
             if artist == '' or artist.lower() in i.get('artist', '').lower():
                 song = i
                 break
@@ -194,6 +198,8 @@ class MusicCmd(Command):
             'Search the music server for a song and play the first result.',
             'You can put @ in front of a word to indicate the artist name, e.g.:',
             '`!play billie jean @jackson`',
+            'You can also put - in front of a word to exclude it from the search, e.g.:',
+            '`!play the best it\'s gonna get -instrumental`',
         ])
 
 @command('stop', 'Stop any music that\'s currently playing.')
