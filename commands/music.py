@@ -149,17 +149,15 @@ with open(str(Path(__file__).parent.parent) + '/secrets.json', 'r') as fp:
 
 
 FFMPEG_OPTIONS = {'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5','options': '-vn'}
+PLAYER = None
 
 @command('play', 'Play a song from the music server (only works in The Abyss)')
 class MusicCmd(Command):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.player = None
-
     async def default(self, message: Message, command: list[str]) -> str:
-        if self.player:
-            self.player.stop()
-            self.player = None
+        global PLAYER
+        if PLAYER:
+            PLAYER.stop()
+            PLAYER = None
 
         if message.author.voice is None:
             return 'This command only works in The Abyss'
@@ -167,10 +165,10 @@ class MusicCmd(Command):
         if len(command) == 0:
             return 'Please input a search term, or "stop" to stop playback.'
 
-        if not self.player:
+        if not PLAYER:
             channel = message.author.voice.channel
             try:
-                self.player = await channel.connect()
+                PLAYER = await channel.connect()
             except Exception as e:
                 return f'ERROR: {e}'
 
@@ -182,14 +180,13 @@ class MusicCmd(Command):
         song = songs[0]
         url = SUBSONIC.get_song_url(song['id'])
 
-        self.player.play(FFmpegPCMAudio(url, **FFMPEG_OPTIONS))
+        PLAYER.play(FFmpegPCMAudio(url, **FFMPEG_OPTIONS))
         return f"Playing \"{song['title']}\" by {song['artist']}."
-
-    @subcommand
-    async def stop(self, message: Message, command: list[str]) -> str:
-        if self.player:
-            self.player.stop()
-            await self.player.disconnect()
-            self.player = None
-
-        return 'Stopped music playback.'
+    
+@command('stop', 'Stop any music that\'s currently playing')
+class MusicCmd(Command):
+    async def default(self, message: Message, command: list[str]) -> str:
+        global PLAYER
+        if PLAYER:
+            PLAYER.stop()
+            PLAYER = None
