@@ -176,7 +176,7 @@ class MusicCmd(Command):
         results = SUBSONIC.search(' '.join(command))
         song = None
         for i in results.get('song', []):
-            if artist == '' or artist in i.get('artist', ''):
+            if artist == '' or artist.lower() in i.get('artist', '').lower():
                 song = i
                 break
 
