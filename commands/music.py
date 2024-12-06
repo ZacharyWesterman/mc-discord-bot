@@ -142,7 +142,8 @@ with open(str(Path(__file__).parent.parent) + '/secrets.json', 'r') as fp:
     SUBSONIC = SubsonicSession(
         host = data['subsonic']['url'],
         username = data['subsonic']['username'],
-        password = data['subsonic']['password']
+        password = data['subsonic']['password'],
+        client = 'discord'
     )
 
 
