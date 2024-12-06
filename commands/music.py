@@ -186,7 +186,7 @@ class MusicCmd(Command):
         url = SUBSONIC.get_song_url(song['id'])
 
         PLAYER.play(FFmpegPCMAudio(url, **FFMPEG_OPTIONS))
-        return f"Playing \"{song['title']}\" by {song['artist']}."
+        return f"Playing **{song['title']}** by {song['artist']}."
     
     @subcommand
     def help(self, message: Message, command: list[str]) -> str:
