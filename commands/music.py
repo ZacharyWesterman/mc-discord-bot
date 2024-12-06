@@ -186,10 +186,9 @@ class MusicCmd(Command):
         global PLAYER
         if PLAYER:
             PLAYER.stop()
-            PLAYER = None
-
-            channel = message.author.voice.channel
             try:
-                await channel.disconnect()
+                await PLAYER.disconnect()
             except Exception as e:
                 return f'ERROR: {e}'
+            PLAYER = None
+
