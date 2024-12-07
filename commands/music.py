@@ -156,6 +156,9 @@ class MusicCmd(Command):
         global PLAYER
         if PLAYER:
             PLAYER.stop()
+            if not PLAYER.is_connected():
+                PLAYER.disconnect()
+                PLAYER = None
 
         if message.author.voice is None:
             return 'This command only works in The Abyss.'
