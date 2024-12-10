@@ -1,6 +1,6 @@
 from commands import *
 
-@command('help', 'Display this help message.')
+@command('help', 'Display this help message.', 'music')
 class HelpCmd(Command):
 	def default(self, message: object, command: list[str]) -> str:
 		cmds = all()

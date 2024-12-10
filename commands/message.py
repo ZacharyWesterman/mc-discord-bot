@@ -47,7 +47,7 @@ def send_message_minecraft(author: str, content: str) -> None:
 	}
 	mc_command('tellraw @a ' + json.dumps(response))
 
-@command('say', 'Send a message to the Flat Earth.')
+@command('say', 'Send a message to the Flat Earth.', 'minecraft')
 class MessageCmd(Command):
 	def get_alias(self, user_id: str) -> str|None:
 		if data := self.db.users.find_one({'user_id': user_id}):

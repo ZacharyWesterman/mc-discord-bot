@@ -5,7 +5,7 @@ from datetime import datetime
 
 MAX_POI = 10
 
-@command('location', 'View or edit points of interest in the Flat Earth.')
+@command('location', 'View or edit points of interest in the Flat Earth.', 'minecraft')
 class LocationCmd(Command):
 	def count_valid_messages(self) -> int:
 		return self.db.messages.count_documents({

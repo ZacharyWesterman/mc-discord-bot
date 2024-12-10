@@ -2,7 +2,7 @@ from commands import *
 from datetime import datetime
 from pathlib import Path
 
-@command('players', 'List what players are logged in.')
+@command('players', 'List what players are logged in.', 'minecraft')
 class PlayersCmd(Command):
 	def get_logfile_paths(self) -> list[str]:
 		now = datetime.now().strftime('%Y.%m.%d.')

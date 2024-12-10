@@ -150,7 +150,7 @@ with open(str(Path(__file__).parent.parent) + '/secrets.json', 'r') as fp:
 FFMPEG_OPTIONS = {'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5','options': '-vn'}
 PLAYER = None
 
-@command('play', 'Play a song from the music server (only works in The Abyss).')
+@command('play', 'Play a song from the music server (only works in The Abyss).', 'music')
 class MusicCmd(Command):
     async def default(self, message: Message, command: list[str]) -> str:
         global PLAYER
@@ -205,7 +205,7 @@ class MusicCmd(Command):
             '`!play the best it\'s gonna get -instrumental`',
         ])
 
-@command('stop', 'Stop any music that\'s currently playing.')
+@command('stop', 'Stop any music that\'s currently playing.', 'music')
 class MusicCmd(Command):
     async def default(self, message: Message, command: list[str]) -> str:
         global PLAYER

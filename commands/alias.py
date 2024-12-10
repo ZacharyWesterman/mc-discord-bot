@@ -1,6 +1,6 @@
 from commands import *
 
-@command('alias', 'Set the username that players see when you send messages to the Flat Earth.')
+@command('alias', 'Set the username that players see when you send messages to the Flat Earth.', 'minecraft')
 class AliasCmd(Command):
 	#Returns false if another user already has that alias
 	def set_alias(self, user_id: str, alias: str) -> bool:

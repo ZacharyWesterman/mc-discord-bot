@@ -7,13 +7,24 @@ from pathlib import Path
 from discord import Message
 import subprocess
 import asyncio
+import argparse
 
 commands = {}
 temp_subcommands = {}
+valid_choices = ['minecraft', 'music']
+
+ARGS = argparse.ArgumentParser()
+ARGS.add_argument('-f', '--features', nargs='+', type=str, default=valid_choices, choices=valid_choices)
+features = ARGS.parse_args().features
 
 db = MongoClient().flatearth
 
-def command(name: str, description: str, *, admin_only: bool = False) -> Callable:
+def command(name: str, description: str, feature: str|None = None, *, admin_only: bool = False) -> Callable:
+	if feature and feature not in features:
+		def dummy(object: Command) -> None:
+			return None
+		return dummy
+
 	def wrapper(object: Command) -> None:
 		global temp_subcommands
 

@@ -1,7 +1,7 @@
 from commands import *
 import json
 
-@command('whitelist', 'Show whitelist info or add/remove players from the whitelist.')
+@command('whitelist', 'Show whitelist info or add/remove players from the whitelist.', 'minecraft')
 class WhitelistCmd(Command):
 	def get_whitelist(self) -> list[str]:
 		with open('../minecraftbe/flatearth/allowlist.json') as fp:
