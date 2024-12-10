@@ -133,6 +133,12 @@ class SubsonicSession:
 
         return None
     
+    @functools.cache
+    def album_info(self, album: str) -> dict:
+        return self.query('getMusicDirectory', {
+            'id': album,
+        })
+    
     def get_song_url(self, id: str) -> str:
         return f'{self.connection_uri}/rest/stream?id={id}&{self.rest_params}'
 
@@ -204,6 +210,58 @@ class MusicCmd(Command):
         return f"Added **{song['title']}** by *{song['artist']}* to the queue." if len(QUEUE) and QUEUE[0]['playing'] else None
     
     @subcommand
+    async def album(self, message: Message, command: list[str]) -> str:
+        global PLAYER
+        global PLAYER_CHANNEL
+        global QUEUE
+        global PAUSED
+
+        if message.author.voice is None:
+            return 'This command only works in The Abyss.'
+
+        query = ' '.join([i for i in command if i[0] not in ['@', '-']])
+        artist = ' '.join([i[1::] for i in command if i[0] == '@'])
+        negate = [i[1::] for i in command if i[0] == '-']
+
+        if len(query) == 0:
+            if len(QUEUE):
+                #Just continue to the next song in the queue.
+                PAUSED = False
+                return
+
+            return 'Please input a search term, or use `!play help` for usage info.'
+
+        if not PLAYER_CHANNEL:
+            PLAYER_CHANNEL = message.author.voice.channel
+
+        results = SUBSONIC.search(' '.join(command))
+        album = None
+        for i in results.get('album', []):
+            if any([k.lower() in i.get('title', '').lower() for k in negate]):
+                continue
+
+            if artist == '' or artist.lower() in i.get('artist', '').lower():
+                album = i
+                break
+
+        if album is None:
+            return 'Album not found.'
+    
+        songs = SUBSONIC.album_info(album['id']).get('directory', {}).get('child', [])
+        await PLAYER_CHANNEL.send(f"Adding album **{album['title']}** by *{album['artist']}* ({len(songs)} songs) to the queue.")
+
+        for song in songs:
+            url = SUBSONIC.get_song_url(song['id'])
+            QUEUE += [{
+                'url': url,
+                'title': song['title'],
+                'artist': song['artist'],
+                'playing': False,
+            }]
+
+        PAUSED = False
+    
+    @subcommand
     def help(self, message: Message, command: list[str]) -> str:
         return '\n'.join([
             'Search the music server for a song and play the first result, or add to the queue if a song is already playing.',
@@ -221,7 +279,7 @@ class MusicCmd(Command):
         PLAYER.stop()
         return None
     
-    @repeat(seconds = 5)
+    @repeat(seconds = 1)
     async def check_queue():
         global PLAYER
         global QUEUE
@@ -318,6 +376,6 @@ class MusicCmd(Command):
     async def clear(self, message: Message, command: list[str]) -> str:
         global QUEUE
         if len(QUEUE):
-            QUEUE = [QUEUE[0]]
+            QUEUE = [i for i in QUEUE if i['playing']]
 
         return 'All songs have been removed from the queue.'
