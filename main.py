@@ -37,6 +37,11 @@ class DiscordClient(discord.Client):
 
 		self.activity = None
 
+		#Set up all tasks to start repeating
+		for cmd in commands.all().values():
+			for task in cmd.repeat_tasks:
+				tasks.loop(seconds = task[1])(task[0]).start()
+
 	@tasks.loop(seconds = 15)
 	async def sync_status_message(self):
 		#Update discord bot status to reflect whether players are online

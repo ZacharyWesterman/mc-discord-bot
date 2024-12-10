@@ -1,4 +1,4 @@
-__all__ = ['get', 'all', 'command', 'Command', 'subcommand', 'bad_cmd', 'bad_subcmd', 'Message', 'mc_command', 'db']
+__all__ = ['get', 'all', 'command', 'Command', 'subcommand', 'repeat', 'bad_cmd', 'bad_subcmd', 'Message', 'mc_command', 'db']
 
 from pymongo import MongoClient
 from pymongo.database import Database
@@ -11,6 +11,7 @@ import argparse
 
 commands = {}
 temp_subcommands = {}
+temp_repeatables = {}
 valid_choices = ['minecraft', 'music']
 
 ARGS = argparse.ArgumentParser()
@@ -27,13 +28,16 @@ def command(name: str, description: str, feature: str|None = None, *, admin_only
 
 	def wrapper(object: Command) -> None:
 		global temp_subcommands
+		global temp_repeatables
 
 		obj = object(db)
 		obj.subcommands = temp_subcommands
+		obj.repeat_tasks = temp_repeatables.values()
 		obj.id = name
 		obj.desc = description
 		obj.admin_only = admin_only
 		temp_subcommands = {}
+		temp_repeatables = {}
 
 		commands[name] = obj
 		return object
@@ -43,6 +47,13 @@ def command(name: str, description: str, feature: str|None = None, *, admin_only
 def subcommand(func: Callable) -> Callable:
 	temp_subcommands[func.__name__] = func
 	return func
+
+def repeat(seconds: float) -> Callable:
+	def wrapper(func: Callable) -> Callable:
+		temp_repeatables[func.__name__] = (func, seconds)
+		return func
+
+	return wrapper
 
 def bad_cmd() -> str:
 	return 'ERROR: Unknown command. Type `@mc.skrunky.com`, `!help` or `/help` for a list of commands.'

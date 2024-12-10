@@ -149,20 +149,19 @@ with open(str(Path(__file__).parent.parent) + '/secrets.json', 'r') as fp:
 
 FFMPEG_OPTIONS = {'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5','options': '-vn'}
 PLAYER = None
+PLAYER_CHANNEL = None
+QUEUE = []
 
 @command('play', 'Play a song from the music server (only works in The Abyss).', 'music')
 class MusicCmd(Command):
     async def default(self, message: Message, command: list[str]) -> str:
         global PLAYER
-        if PLAYER:
-            PLAYER.stop()
-            if not PLAYER.is_connected():
-                PLAYER.disconnect()
-                PLAYER = None
+        global PLAYER_CHANNEL
+        global QUEUE
 
         if message.author.voice is None:
             return 'This command only works in The Abyss.'
-        
+
         query = ' '.join([i for i in command if i[0] not in ['@', '-']])
         artist = ' '.join([i[1::] for i in command if i[0] == '@'])
         negate = [i[1::] for i in command if i[0] == '-']
@@ -170,12 +169,8 @@ class MusicCmd(Command):
         if len(query) == 0:
             return 'Please input a search term, or use `!play help` for usage info.'
 
-        if not PLAYER:
-            channel = message.author.voice.channel
-            try:
-                PLAYER = await channel.connect()
-            except Exception as e:
-                return f'ERROR: {e}'
+        if not PLAYER_CHANNEL:
+            PLAYER_CHANNEL = message.author.voice.channel
 
         results = SUBSONIC.search(' '.join(command))
         song = None
@@ -191,9 +186,9 @@ class MusicCmd(Command):
             return 'Song not found.'
 
         url = SUBSONIC.get_song_url(song['id'])
+        QUEUE += [(url, song['title'], song['artist'])]
 
-        PLAYER.play(FFmpegPCMAudio(url, **FFMPEG_OPTIONS))
-        return f"Playing **{song['title']}** by {song['artist']}."
+        return f"Added **{song['title']}** by *{song['artist']}* to the queue." if PLAYER and PLAYER.is_playing() else None
     
     @subcommand
     def help(self, message: Message, command: list[str]) -> str:
@@ -204,6 +199,46 @@ class MusicCmd(Command):
             'You can also put - in front of a word to exclude it from the search, e.g.:',
             '`!play the best it\'s gonna get -instrumental`',
         ])
+    
+    @subcommand
+    def next(self, message: Message, command: list[str]) -> str:
+        PLAYER.stop()
+        return None
+    
+    @repeat(seconds = 5)
+    async def check_queue():
+        global PLAYER
+        global QUEUE
+
+        if not PLAYER_CHANNEL:
+            return
+
+        if PLAYER and PLAYER.is_playing():
+            return
+
+        #If not playing audio, continue to next song
+
+        #First exit the channel
+        if PLAYER:
+            PLAYER.stop()
+            # if not PLAYER.is_connected():
+            await PLAYER.disconnect()
+            PLAYER = None
+
+        #Connect to the channel and play what's next in the queue
+        if len(QUEUE) == 0:
+            return
+        
+        try:
+            PLAYER = await PLAYER_CHANNEL.connect()
+        except Exception as e:
+            print(f'ERROR: {e}', flush=True)
+            return
+        
+        url, title, artist = QUEUE.pop(0)
+        await PLAYER_CHANNEL.send(f'Playing **{title}** by *{artist}*')
+
+        PLAYER.play(FFmpegPCMAudio(url, **FFMPEG_OPTIONS))
 
 @command('stop', 'Stop any music that\'s currently playing.', 'music')
 class MusicCmd(Command):
