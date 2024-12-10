@@ -150,6 +150,7 @@ with open(str(Path(__file__).parent.parent) + '/secrets.json', 'r') as fp:
 FFMPEG_OPTIONS = {'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5','options': '-vn'}
 PLAYER = None
 PLAYER_CHANNEL = None
+PAUSED = False
 QUEUE = []
 
 @command('play', 'Play a song from the music server (only works in The Abyss).', 'music')
@@ -158,6 +159,7 @@ class MusicCmd(Command):
         global PLAYER
         global PLAYER_CHANNEL
         global QUEUE
+        global PAUSED
 
         if message.author.voice is None:
             return 'This command only works in The Abyss.'
@@ -167,6 +169,11 @@ class MusicCmd(Command):
         negate = [i[1::] for i in command if i[0] == '-']
 
         if len(query) == 0:
+            if len(QUEUE):
+                #Just continue to the next song in the queue.
+                PAUSED = False
+                return
+
             return 'Please input a search term, or use `!play help` for usage info.'
 
         if not PLAYER_CHANNEL:
@@ -192,6 +199,7 @@ class MusicCmd(Command):
             'artist': song['artist'],
             'playing': False,
         }]
+        PAUSED = False
 
         return f"Added **{song['title']}** by *{song['artist']}* to the queue." if len(QUEUE) and QUEUE[0]['playing'] else None
     
@@ -222,6 +230,9 @@ class MusicCmd(Command):
             return
 
         if PLAYER and PLAYER.is_playing():
+            return
+        
+        if PAUSED:
             return
 
         #If not playing audio, continue to next song
@@ -257,6 +268,13 @@ class MusicCmd(Command):
 class MusicCmd(Command):
     async def default(self, message: Message, command: list[str]) -> str:
         global PLAYER
+        global PAUSED
+        global QUEUE
+
+        PAUSED = True
+        if len(QUEUE) and QUEUE[0]['playing']:
+            QUEUE.pop(0)
+
         if PLAYER:
             PLAYER.stop()
             try:
@@ -287,3 +305,19 @@ class MusicCmd(Command):
             msg += [f'{i-offset+1}. **{QUEUE[i]["title"]}** by *{QUEUE[i]["artist"]}*']
 
         return '\n'.join(msg)
+
+    @subcommand
+    async def help(self, message: Message, command: list[str]) -> str:
+        return '\n'.join([
+            'View and edit the music queue.',
+            '`!queue` lists all songs in the queue and what\'s playing, if anything.',
+            '`!queue clear` removes all songs from the queue, except what\'s currently playing.',
+        ])
+    
+    @subcommand
+    async def clear(self, message: Message, command: list[str]) -> str:
+        global QUEUE
+        if len(QUEUE):
+            QUEUE = [QUEUE[0]]
+
+        return 'All songs have been removed from the queue.'
