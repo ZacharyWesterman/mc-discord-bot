@@ -186,18 +186,26 @@ class MusicCmd(Command):
             return 'Song not found.'
 
         url = SUBSONIC.get_song_url(song['id'])
-        QUEUE += [(url, song['title'], song['artist'])]
+        QUEUE += [{
+            'url': url,
+            'title': song['title'],
+            'artist': song['artist'],
+            'playing': False,
+        }]
 
-        return f"Added **{song['title']}** by *{song['artist']}* to the queue." if PLAYER and PLAYER.is_playing() else None
+        return f"Added **{song['title']}** by *{song['artist']}* to the queue." if len(QUEUE) and QUEUE[0]['playing'] else None
     
     @subcommand
     def help(self, message: Message, command: list[str]) -> str:
         return '\n'.join([
-            'Search the music server for a song and play the first result.',
+            'Search the music server for a song and play the first result, or add to the queue if a song is already playing.',
             'You can put @ in front of a word to indicate the artist name, e.g.:',
             '`!play billie jean @jackson`',
             'You can also put - in front of a word to exclude it from the search, e.g.:',
             '`!play the best it\'s gonna get -instrumental`',
+            '----',
+            '`!play next` skips to the next song in the queue.',
+            '`!play album {album name}` adds an entire album to the queue.',
         ])
     
     @subcommand
@@ -225,20 +233,25 @@ class MusicCmd(Command):
             await PLAYER.disconnect()
             PLAYER = None
 
+        #Remove any finished song from the queue
+        if len(QUEUE) and QUEUE[0]['playing']:
+            QUEUE.pop(0)
+
         #Connect to the channel and play what's next in the queue
         if len(QUEUE) == 0:
             return
-        
+
         try:
             PLAYER = await PLAYER_CHANNEL.connect()
         except Exception as e:
             print(f'ERROR: {e}', flush=True)
             return
         
-        url, title, artist = QUEUE.pop(0)
-        await PLAYER_CHANNEL.send(f'Playing **{title}** by *{artist}*')
+        item = QUEUE[0]
+        item['playing'] = True
+        await PLAYER_CHANNEL.send(f'Playing **{item["title"]}** by *{item["artist"]}*')
 
-        PLAYER.play(FFmpegPCMAudio(url, **FFMPEG_OPTIONS))
+        PLAYER.play(FFmpegPCMAudio(item['url'], **FFMPEG_OPTIONS))
 
 @command('stop', 'Stop any music that\'s currently playing.', 'music')
 class MusicCmd(Command):
@@ -252,3 +265,25 @@ class MusicCmd(Command):
                 return f'ERROR: {e}'
             PLAYER = None
 
+@command('queue', 'List all songs in the music queue.', 'music')
+class MusicCmd(Command):
+    async def default(self, message: Message, command: list[str]) -> str:
+        if len(QUEUE) == 0:
+            return 'There are no songs in the queue.'
+        
+        offset = 0
+        msg = []
+        if QUEUE[0]['playing']:
+            offset = 1
+            msg += [
+                'Currently Playing:',
+                f'- **{QUEUE[0]["title"]}** by *{QUEUE[0]["artist"]}*',
+            ]
+
+        if len(QUEUE) > offset:
+            msg += ['Up Next:']
+
+        for i in range(offset, len(QUEUE)):
+            msg += [f'{i-offset+1}. **{QUEUE[i]["title"]}** by *{QUEUE[i]["artist"]}*']
+
+        return '\n'.join(msg)
