@@ -1,0 +1,7 @@
+{
+    "editor.formatOnSave": true,
+    "files.insertFinalNewline": true,
+    "python.analysis.inlayHints.variableTypes": true,
+    "python.analysis.inlayHints.functionReturnTypes": false,
+    "editor.insertSpaces": true
+}

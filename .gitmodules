@@ -1,0 +1,3 @@
+[submodule "subsonic"]
+	path = subsonic
+	url = git@github.com:ZacharyWesterman/subsonic.git
