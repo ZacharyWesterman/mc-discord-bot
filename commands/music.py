@@ -366,7 +366,16 @@ class MusicCmd(Command):
         if maxprint < len(QUEUE):
             msg+= [f'\n(and {len(QUEUE)-maxprint} more.)']
 
-        return '\n'.join(msg)
+        #Split up big responses into multiple messages
+        text = msg.pop(0)
+        for i in msg:
+            if len(text + '\n' + i) > 2000:
+                await message.channel.send(text)
+                text = i
+            else:
+                text += '\n' + i
+
+        return text
 
     @subcommand
     async def help(self, message: Message, command: list[str]) -> str:
