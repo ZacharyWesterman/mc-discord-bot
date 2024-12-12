@@ -359,8 +359,12 @@ class MusicCmd(Command):
         if len(QUEUE) > offset:
             msg += ['Up Next:']
 
-        for i in range(offset, len(QUEUE)):
+        maxprint = offset+20
+        for i in range(offset, min(offset+maxprint, len(QUEUE))):
             msg += [f'{i-offset+1}. **{QUEUE[i]["title"]}** by *{QUEUE[i]["artist"]}*']
+
+        if maxprint < len(QUEUE):
+            msg+= [f'\n(and {len(QUEUE)-maxprint} more.)']
 
         return '\n'.join(msg)
 
