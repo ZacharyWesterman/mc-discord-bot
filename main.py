@@ -184,7 +184,7 @@ class DiscordClient(discord.Client):
                 this_command.insert(0, '!say')
             else:
                 # If this is a non-command in the games channel, check if it looks like coordinates
-                self.detect_point_of_interest()
+                self.detect_point_of_interest(message)
                 return  # Don't follow through with any command
 
         # Now commands are all uniform,
