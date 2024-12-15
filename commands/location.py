@@ -59,8 +59,7 @@ class LocationCmd(Command):
                 'To add a new point of interest, type a description of the location along with the coordinates, then click an emoji indicating what dimension it\'s in.',
                 'For example, `village -123 456`, `-12,34,-56 mesa biome`, and `deep 123,-456 dark` are all valid points of interest.',
                 'To rename a point of interest, just add a new one with the exact same coordinates.',
-                f'To delete a point of interest, remove all your emojis from the original message, or use the `{
-                    self} delete` command.',
+                f'To delete a point of interest, remove all your emojis from the original message, or use the `{self} delete` command.',
             ])
 
         return bad_subcmd(command[0])
@@ -102,23 +101,19 @@ class LocationCmd(Command):
 
         if len(command):
             if not re.match(r'^\d+$', command[0]) or int(command[0]) < 1:
-                response += f'Invalid page number `{
-                    command[0]}`, defaulting to `1`.\n'
+                response += f'Invalid page number `{command[0]}`, defaulting to `1`.\n'
                 page_number = 1
             else:
                 page_number = int(command[0])
 
         if page_number > page_ct:
-            response += f'Invalid page number `{
-                page_number}`, defaulting to `{page_ct}`.\n'
+            response += f'Invalid page number `{page_number}`, defaulting to `{page_ct}`.\n'
             page_number = page_ct
 
         emojis = self.get_emojis(message)
 
-        response += f'Points of interest, page {
-            page_number} of {page_ct} ({msg_ct} total)'
+        response += f'Points of interest, page {page_number} of {page_ct} ({msg_ct} total)'
         for i in self.get_valid_messages((page_number-1) * MAX_POI, MAX_POI):
-            response += f"\n> `{i.get('label', 'ERR: NO LABEL')}`: {i.get('coords', [])} {
-                ''.join(emojis[i] for i in i.get('emojis', []))}"
+            response += f"\n> `{i.get('label', 'ERR: NO LABEL')}`: {i.get('coords', [])} {''.join(emojis[i] for i in i.get('emojis', []))}"
 
         return response

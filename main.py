@@ -102,8 +102,7 @@ class DiscordClient(discord.Client):
                 commands.db.markers.insert_one(marker)
                 updated[dimension] = True
 
-            commands.db.messages.update_one({'_id': message['_id']}, {
-                                            '$set': {'updated': False}})
+            commands.db.messages.update_one({'_id': message['_id']}, {'$set': {'updated': False}})
 
         # If marker updates involved any change, update only the respective files
         for dimension in [i for i in updated if updated[i]]:
@@ -149,8 +148,7 @@ class DiscordClient(discord.Client):
                         try:
                             await message.add_reaction(emoji)
                         except Exception as e:
-                            print(f'Failed to react with custom emoji: {
-                                  e}', flush=True)
+                            print(f'Failed to react with custom emoji: {e}', flush=True)
                         break
 
     async def on_message(self, message: discord.Message):
@@ -235,8 +233,7 @@ class DiscordClient(discord.Client):
                     try:
                         await message.remove_reaction(emoji, self.user)
                     except Exception as e:
-                        print(f'Failed to react with custom emoji: {
-                              e}', flush=True)
+                        print(f'Failed to react with custom emoji: {e}', flush=True)
                     break
 
     async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent):

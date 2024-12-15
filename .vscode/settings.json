@@ -3,5 +3,9 @@
     "files.insertFinalNewline": true,
     "python.analysis.inlayHints.variableTypes": true,
     "python.analysis.inlayHints.functionReturnTypes": false,
-    "editor.insertSpaces": true
+    "editor.insertSpaces": true,
+    "autopep8.args": [
+        "--max-line-length",
+        "256"
+    ]
 }

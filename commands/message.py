@@ -66,8 +66,7 @@ class MessageCmd(Command):
 
         alias = self.get_alias(message.author.id)
         if alias := self.get_alias(message.author.id):
-            self.log(f'Received DM from {
-                     message.author}({alias}): {message.content}')
+            self.log(f'Received DM from {message.author}({alias}): {message.content}')
         else:
             alias = str(message.author)
             self.log(f'Received DM from {message.author}: {message.content}')
