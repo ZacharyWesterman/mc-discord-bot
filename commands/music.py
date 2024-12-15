@@ -224,8 +224,7 @@ class MusicCmd(Command):
 
         maxprint = offset+20
         for i in range(offset, min(offset+maxprint, len(QUEUE))):
-            msg += [f'{i-offset+1}. **{QUEUE[i]
-                                       ["title"]}** by *{QUEUE[i]["artist"]}*']
+            msg += [f'{i-offset+1}. **{QUEUE[i]["title"]}** by *{QUEUE[i]["artist"]}*']
 
         if maxprint < len(QUEUE):
             msg += [f'\n(and {len(QUEUE)-maxprint} more.)']
