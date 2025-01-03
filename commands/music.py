@@ -110,7 +110,7 @@ class MusicCmd(Command):
         if album is None:
             return 'Album not found.'
 
-        await PLAYER_CHANNEL.send(f"Adding album **{album['title']}** by *{album['artist']}* ({len(album.songs)} songs) to the queue.")
+        await PLAYER_CHANNEL.send(f"Adding album **{album.title}** by *{album.artist}* ({len(album.songs)} songs) to the queue.")
 
         for song in album.songs:
             QUEUE += [{
