@@ -74,9 +74,10 @@ class DiscordClient(discord.Client):
 
         for message in commands.db.messages.find({'updated': True}):
             x_coord = message['coords'][0]
-            z_coord = message['coords'][1] if len(
-                message['coords']) == 2 else message['coords'][2]
+            z_coord = message['coords'][1] if len(message['coords']) == 2 else message['coords'][2]
             label = message['label']
+
+            print(f'Updating marker for {label} at {x_coord}, {z_coord}', flush=True)
 
             # Remove any marker on the specified position, in any dimension.
             for i in commands.db.markers.find({'x': x_coord, 'z': z_coord}):
