@@ -3,7 +3,7 @@ import subsonic
 
 import json
 from pathlib import Path
-from discord import FFmpegPCMAudio
+import discord
 
 with open(str(Path(__file__).parent.parent) + '/secrets.json', 'r') as fp:
     data = json.load(fp)
@@ -181,7 +181,8 @@ class MusicCmd(Command):
         item['playing'] = True
         await PLAYER_CHANNEL.send(f'Playing **{item["title"]}** by *{item["artist"]}*')
 
-        PLAYER.play(FFmpegPCMAudio(item['url'], **FFMPEG_OPTIONS))
+        PLAYER.play(discord.FFmpegPCMAudio(item['url'], **FFMPEG_OPTIONS))
+        PLAYER.source = discord.PCMVolumeTransformer(PLAYER.source, volume=0.25)
 
 
 @command('stop', 'Stop any music that\'s currently playing.', 'music')
