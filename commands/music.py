@@ -204,54 +204,55 @@ class MusicCmdPlay(Command):
         if PLAYER:
             PLAYER.stop()
 
-    @repeat(seconds=1)
-    async def check_queue(self) -> None:
-        """
-        Check the music queue and play the next song if necessary.
-        This method is called periodically to ensure that the music player
-        is playing the next song in the queue if no song is currently playing.
-        """
 
-        global PLAYER
+@repeat(seconds=1)
+async def check_queue() -> None:
+    """
+    Check the music queue and play the next song if necessary.
+    This method is called periodically to ensure that the music player
+    is playing the next song in the queue if no song is currently playing.
+    """
 
-        if not PLAYER_CHANNEL:
-            return
+    global PLAYER
 
-        if PLAYER and PLAYER.is_playing():
-            return
+    if not PLAYER_CHANNEL:
+        return
 
-        if PAUSED:
-            return
+    if PLAYER and PLAYER.is_playing():
+        return
 
-        # If not playing audio, continue to next song
+    if PAUSED:
+        return
 
-        # First exit the channel
-        if PLAYER:
-            PLAYER.stop()
-            await PLAYER.disconnect()  # type: ignore
-            PLAYER = None
+    # If not playing audio, continue to next song
 
-        # Remove any finished song from the queue
-        if len(QUEUE) > 0 and QUEUE[0]['playing']:
-            QUEUE.pop(0)
+    # First exit the channel
+    if PLAYER:
+        PLAYER.stop()
+        await PLAYER.disconnect()  # type: ignore
+        PLAYER = None
 
-        # Connect to the channel and play what's next in the queue
-        if len(QUEUE) == 0:
-            return
+    # Remove any finished song from the queue
+    if len(QUEUE) > 0 and QUEUE[0]['playing']:
+        QUEUE.pop(0)
 
-        try:
-            PLAYER = await PLAYER_CHANNEL.connect()
-        except (asyncio.TimeoutError, discord.ClientException, discord.opus.OpusNotLoaded) as e:
-            print(f'ERROR: {e}', flush=True)
-            return
+    # Connect to the channel and play what's next in the queue
+    if len(QUEUE) == 0:
+        return
 
-        item = QUEUE[0]
-        item['playing'] = True
-        await PLAYER_CHANNEL.send(f'Playing **{item["title"]}** by *{item["artist"]}*')
+    try:
+        PLAYER = await PLAYER_CHANNEL.connect()
+    except (asyncio.TimeoutError, discord.ClientException, discord.opus.OpusNotLoaded) as e:
+        print(f'ERROR: {e}', flush=True)
+        return
 
-        PLAYER.play(discord.FFmpegPCMAudio(item['url'], **FFMPEG_OPTIONS))  # type: ignore
-        if PLAYER.source is not None:
-            PLAYER.source = discord.PCMVolumeTransformer(PLAYER.source, volume=0.25)
+    item = QUEUE[0]
+    item['playing'] = True
+    await PLAYER_CHANNEL.send(f'Playing **{item["title"]}** by *{item["artist"]}*')
+
+    PLAYER.play(discord.FFmpegPCMAudio(item['url'], **FFMPEG_OPTIONS))  # type: ignore
+    if PLAYER.source is not None:
+        PLAYER.source = discord.PCMVolumeTransformer(PLAYER.source, volume=0.25)
 
 
 @command('stop', 'Stop any music that\'s currently playing.', 'music')
