@@ -89,7 +89,7 @@ class DiscordClient(discord.Client):
         # Set up all tasks to start repeating
         for cmd in commands.all().values():
             for task in cmd.repeat_tasks:
-                tasks.loop(seconds=task[1])(task[0]).start()
+                tasks.loop(seconds=task[1])(lambda: task[0](cmd)).start()
 
     def set_markers(self, updated) -> None:
         """
