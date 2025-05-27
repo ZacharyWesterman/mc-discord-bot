@@ -102,7 +102,7 @@ class Command:
             method = self.subcommands[cmd[0]]
             self.sub = cmd[0]
         else:
-            params = {'message': message, 'command': cmd}
+            params = {'message': message, 'cmd': cmd}
             method = self.default
             self.sub = 'NO SUB'
 
