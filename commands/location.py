@@ -236,7 +236,7 @@ class LocationCmd(Command):
         for i in self.get_valid_messages((page_number - 1) * MAX_POI, MAX_POI):
             response += (
                 f"\n> `{i.get('label', 'ERR: NO LABEL')}`: " +
-                f'{i.get('coords', [])} ' +
+                f"{i.get('coords', [])} " +
                 f"{''.join(emojis[i] for i in i.get('emojis', []))}"
             )
 
