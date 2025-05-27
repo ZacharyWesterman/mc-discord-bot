@@ -8,7 +8,6 @@ __all__ = ['get', 'all', 'command', 'Command', 'subcommand',
            'repeat', 'bad_cmd', 'bad_subcmd', 'Message', 'mc_command', 'db']
 
 import argparse
-import asyncio
 import subprocess
 from pathlib import Path
 from typing import Callable
