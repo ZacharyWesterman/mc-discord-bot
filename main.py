@@ -1,25 +1,44 @@
 #!/usr/bin/env python3
 
-import discord
-from discord.ext import tasks
 import json
 import re
-from pathlib import Path
-from mcstatus import BedrockServer
-import commands
 from datetime import datetime
+from pathlib import Path
 
-with open(str(Path(__file__).parent) + '/secrets.json', 'r') as fp:
+import discord
+from discord import Forbidden, HTTPException, NotFound
+from discord.ext import tasks
+from mcstatus import BedrockServer
+
+import commands
+
+with open(str(Path(__file__).parent) + '/secrets.json', 'r', encoding='utf8') as fp:
     data = json.load(fp)
     DISCORD_TOKEN = data['token']
     GUILD_ID = data['guild']
 
 
-def read_message(id: int) -> dict:
+def read_message(id: int) -> dict | None:
+    """
+    Read a message from the database by its ID.
+
+    Args:
+        id (int): The ID of the message to read.
+
+    Returns:
+        dict | None: The message document if found, otherwise None.
+    """
     return commands.db.messages.find_one({'message_id': id})
 
 
 def create_message(id: int, msg: dict) -> None:
+    """
+    Create a new message in the database with the given ID and content.
+
+    Args:
+        id (int): The ID of the message to create.
+        msg (dict): The content of the message, including emojis, text, label, coordinates, and author.
+    """
     msg['message_id'] = id
     msg['updated'] = False
     msg['created'] = datetime.utcnow()
@@ -28,6 +47,13 @@ def create_message(id: int, msg: dict) -> None:
 
 
 def update_message_emojis(id: int, emojis: list[str]) -> None:
+    """
+    Update the reactions for a message with the given ID.
+
+    Args:
+        id (int): The ID of the message to update.
+        emojis (list[str]): A list of emojis to set for the message.
+    """
     commands.db.messages.update_one({'message_id': id}, {'$set': {
         'emojis': emojis,
         'updated': True,
@@ -36,7 +62,25 @@ def update_message_emojis(id: int, emojis: list[str]) -> None:
 
 
 class DiscordClient(discord.Client):
+    """
+    A Discord client that listens for messages and reacts to them.
+    It handles commands, updates player status, and manages point of interest markers.
+    """
+
+    def __init__(self, *args, **kwargs):
+        """
+        Initialize the Discord client with the given arguments and keyword arguments.
+        It sets up the database connection and prepares the client for use.
+        """
+        super().__init__(*args, **kwargs)
+        self.activity = None
+
     async def on_ready(self):
+        """
+        Called when the client is ready and connected to Discord.
+        It initializes the bot, sets the status message, and starts repeating tasks.
+        """
+
         print('Logged in as ', self.user)
         self.sync_status_message.start()
 
@@ -47,8 +91,45 @@ class DiscordClient(discord.Client):
             for task in cmd.repeat_tasks:
                 tasks.loop(seconds=task[1])(task[0]).start()
 
+    def set_markers(self, updated) -> None:
+        """
+        Update the custom markers for the Minecraft map based on the provided updates.
+        This function generates JavaScript files for each dimension that has markers,
+        removing the '_id' and 'dimension' fields from each marker.
+
+        Args:
+            updated (dict): A dictionary indicating which dimensions have updated markers.
+                Keys are dimension names ('overworld', 'nether', 'end') and values are booleans
+                indicating whether there were updates for that dimension.
+        """
+
+        # If marker updates involved any change, update only the respective files
+        for dimension in [key for key, val in updated.items() if val]:
+            def process(marker: dict) -> dict:
+                del marker['_id']
+                del marker['dimension']
+                return marker
+
+            text = 'UnminedCustomMarkers = { isEnabled: true, markers: ' + json.dumps([
+                process(i) for i in commands.db.markers.find({'dimension': dimension})
+            ], indent=2) + '}'
+
+            with open(
+                f'/var/www/html/maps/{dimension}/custom.markers.js',
+                'w', encoding='utf8'
+            ) as f:
+                f.write(text)
+
+            print(f'Updated {dimension} map.', flush=True)
+
     @tasks.loop(seconds=15)
-    async def sync_status_message(self):
+    async def sync_status_message(self) -> None:
+        """
+        A task that runs every 15 seconds to update the bot's status and markers.
+        It checks the Minecraft server status, updates the Discord bot's presence,
+        and updates any markers based on messages in the database.
+        """
+
         # Update discord bot status to reflect whether players are online
         status = MINECRAFT.status()
         count = status.players.online
@@ -106,29 +187,29 @@ class DiscordClient(discord.Client):
             commands.db.messages.update_one({'_id': message['_id']}, {'$set': {'updated': False}})
 
         # If marker updates involved any change, update only the respective files
-        for dimension in [i for i in updated if updated[i]]:
-            def process(marker: dict) -> dict:
-                del marker['_id']
-                del marker['dimension']
-                return marker
+        self.set_markers(updated)
 
-            text = 'UnminedCustomMarkers = { isEnabled: true, markers: ' + json.dumps([
-                process(i) for i in commands.db.markers.find({'dimension': dimension})
-            ], indent=2) + '}'
+    async def detect_point_of_interest(self, message: discord.Message) -> None:
+        """
+        Detect if a message contains coordinates and create a point of interest marker.
+        If the message contains two consecutive integers, it is assumed to be coordinates.
+        If so, it creates a marker in the database and adds reactions for the dimensions.
 
-            with open(f'/var/www/html/maps/{dimension}/custom.markers.js', 'w') as fp:
-                fp.write(text)
+        Args:
+            message (discord.Message): The Discord message to check for coordinates.
+        """
 
-            print(f'Updated {dimension} map.', flush=True)
+        if not message.guild:
+            return  # Ignore DMs
 
-    async def detect_point_of_interest(self, message: discord.Message):
-        # Check if the message has two consecutive integers in it. If so, it's most likely coordinates
         pattern = re.compile(r'(-?\b([0-9]+)([, ]+|$)){2,}')
         match = pattern.search(message.content)
 
         if match:
             begin, end = match.span(0)
-            pre, mid, post = message.content[0:begin], message.content[begin:end], message.content[end::]
+            pre = message.content[0:begin]
+            mid = message.content[begin:end]
+            post = message.content[end::]
 
             text = f'{pre} {post}'.replace(
                 ',', '').replace(':', '').strip().upper()
@@ -148,18 +229,35 @@ class DiscordClient(discord.Client):
                     if emoji.name == i:
                         try:
                             await message.add_reaction(emoji)
-                        except Exception as e:
+                        except (HTTPException, Forbidden, NotFound, TypeError) as e:
                             print(f'Failed to react with custom emoji: {e}', flush=True)
                         break
 
     async def on_message(self, message: discord.Message):
+        """
+        Called when a message is sent in a channel the bot can see.
+        It processes the message to check for commands, coordinates, and responds accordingly.
+
+        Args:
+            message (discord.Message): The message that was sent.
+        """
+
         # Don't respond to ourselves
         if message.author == self.user:
             return
 
+        if not self.user:
+            print('Discord client is not logged in. Exiting...')
+            return
+
         # Only respond to commands & messages if this is a DM, or it's in the games channel
         valid_channels = ('games', 'The Abyss')
-        if not isinstance(message.channel, discord.channel.DMChannel) and message.channel.name not in valid_channels:
+        if (
+            not isinstance(message.channel, discord.channel.DMChannel) and (
+                isinstance(message.channel, discord.PartialMessageable) or
+                message.channel.name not in valid_channels
+            )
+        ):
             return
 
         # If someone sent a command, handle that
@@ -168,13 +266,13 @@ class DiscordClient(discord.Client):
         if f'<@{self.user.id}>' in message.content:
             msg = message.content.replace(f'<@{self.user.id}>', '')
             this_command = [i for i in msg.strip().split(' ') if len(i)]
-            if not len(this_command):
+            if len(this_command) == 0:
                 this_command = ['!help']
         else:
             this_command = [
                 i for i in message.content.strip().split(' ') if len(i)]
 
-        if not len(this_command):
+        if len(this_command) == 0:
             return
 
         if this_command[0][0] not in ['!', '/']:
@@ -194,7 +292,7 @@ class DiscordClient(discord.Client):
 
             response = await cmd.call(message, this_command[1::])
             emoji = None
-            if type(response) is tuple:
+            if isinstance(response, tuple):
                 emoji, response = response[1], response[0]
 
             if response:
@@ -204,7 +302,21 @@ class DiscordClient(discord.Client):
         else:
             await message.channel.send(commands.bad_cmd())
 
-    async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
+    async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent) -> None:
+        """
+        Called when a reaction is added to a message.
+        It checks if the reaction is one of the custom emojis for dimensions,
+        and updates the message accordingly.
+
+        Args:
+            payload (discord.RawReactionActionEvent):
+                The payload containing information about the reaction.
+        """
+
+        if not self.user:
+            print('Discord client is not logged in. Exiting...')
+            return
+
         if payload.emoji.name not in ['overworld', 'nether', 'end']:
             return
 
@@ -227,17 +339,35 @@ class DiscordClient(discord.Client):
 
         # Remove automatic reactions
         channel = await self.fetch_channel(payload.channel_id)
-        message = await channel.fetch_message(payload.message_id)
+
+        message = await channel.fetch_message(payload.message_id)  # type: ignore
+        if not message.guild:
+            return
+
         for i in ['overworld', 'nether', 'end']:
             for emoji in message.guild.emojis:
                 if emoji.name == i:
                     try:
                         await message.remove_reaction(emoji, self.user)
-                    except Exception as e:
+                    except (HTTPException, Forbidden, NotFound, TypeError) as e:
                         print(f'Failed to react with custom emoji: {e}', flush=True)
                     break
 
-    async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent):
+    async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent) -> None:
+        """
+        Called when a reaction is removed from a message.
+        It checks if the reaction is one of the custom emojis for dimensions,
+        and updates the message accordingly.
+
+        Args:
+            payload (discord.RawReactionActionEvent):
+                The payload containing information about the reaction.
+        """
+
+        if not self.user:
+            print('Discord client is not logged in. Exiting...')
+            return
+
         if payload.emoji.name not in ['overworld', 'nether', 'end']:
             return
 

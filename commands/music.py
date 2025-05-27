@@ -1,11 +1,21 @@
-from commands import *
-import subsonic
+"""
+Music commands for the Discord bot, using Subsonic as the music server.
 
+This module allows users to play music from a Subsonic server, manage a queue,
+and control playback within a Discord voice channel.
+"""
+
+import asyncio
 import json
 from pathlib import Path
-import discord
 
-with open(str(Path(__file__).parent.parent) + '/secrets.json', 'r') as fp:
+import discord
+from discord import Message
+
+import subsonic
+from commands import Command, command, repeat, subcommand
+
+with open(str(Path(__file__).parent.parent) + '/secrets.json', 'r', encoding='utf8') as fp:
     data = json.load(fp)
     SUBSONIC = subsonic.SubsonicClient(
         host=data['subsonic']['url'],
@@ -16,7 +26,9 @@ with open(str(Path(__file__).parent.parent) + '/secrets.json', 'r') as fp:
 
 
 FFMPEG_OPTIONS = {
-    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5', 'options': '-vn'}
+    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
+    'options': '-vn',
+}
 PLAYER = None
 PLAYER_CHANNEL = None
 PAUSED = False
@@ -24,22 +36,26 @@ QUEUE = []
 
 
 @command('play', 'Play a song from the music server (only works in The Abyss).', 'music')
-class MusicCmd(Command):
-    async def default(self, message: Message, command: list[str]) -> str:
-        global PLAYER
+class MusicCmdPlay(Command):
+    """
+    Command to play music from a Subsonic server in a Discord voice channel.
+    This command allows users to search for songs, albums, and manage a queue.
+    """
+
+    async def default(self, message: Message, cmd: list[str]) -> str | None:
         global PLAYER_CHANNEL
         global QUEUE
         global PAUSED
 
-        if message.author.voice is None:
+        if isinstance(message.author, discord.User) or message.author.voice is None:
             return 'This command only works in The Abyss.'
 
-        query = ' '.join([i for i in command if i[0] not in ['@', '-']])
-        artist = ' '.join([i[1::] for i in command if i[0] == '@'])
-        negate = [i[1::] for i in command if i[0] == '-']
+        query = ' '.join([i for i in cmd if i[0] not in ['@', '-']])
+        artist = ' '.join([i[1::] for i in cmd if i[0] == '@'])
+        negate = [i[1::] for i in cmd if i[0] == '-']
 
         if len(query) == 0:
-            if len(QUEUE):
+            if len(QUEUE) > 0:
                 # Just continue to the next song in the queue.
                 PAUSED = False
                 return
@@ -49,13 +65,13 @@ class MusicCmd(Command):
         if not PLAYER_CHANNEL:
             PLAYER_CHANNEL = message.author.voice.channel
 
-        results = SUBSONIC.search(' '.join(command))
+        results = SUBSONIC.search(' '.join(cmd))
         song = None
         for i in results.songs:
-            if any([k.lower() in i.title.lower() for k in negate]):
+            if any(k.lower() in i.title.lower() for k in negate):
                 continue
 
-            if artist == '' or artist.lower() in i.artist.lower():
+            if artist == '' or (i.artist is not None and artist.lower() in i.artist.lower()):
                 song = i
                 break
 
@@ -70,24 +86,39 @@ class MusicCmd(Command):
         }]
         PAUSED = False
 
-        return f"Added **{song.title}** by *{song.artist}* to the queue." if len(QUEUE) and QUEUE[0]['playing'] else None
+        return (
+            f"Added **{song.title}** by *{song.artist}* to the queue."
+            if len(QUEUE) > 0 and QUEUE[0]['playing']
+            else None
+        )
 
     @subcommand
-    async def album(self, message: Message, command: list[str]) -> str:
-        global PLAYER
+    async def album(self, message: Message, cmd: list[str]) -> str | None:
+        """
+        Add an entire album to the music queue.
+        This command searches for an album by name and adds all its songs to the queue.
+
+        Args:
+            message (Message): The Discord message that triggered the command.
+            cmd (list[str]): The command arguments, where the first element is the command name.
+
+        Returns:
+            str | None: A message indicating the result of the operation, or None if successful.
+        """
+
         global PLAYER_CHANNEL
         global QUEUE
         global PAUSED
 
-        if message.author.voice is None:
+        if isinstance(message.author, discord.User) or message.author.voice is None:
             return 'This command only works in The Abyss.'
 
-        query = ' '.join([i for i in command if i[0] not in ['@', '-']])
-        artist = ' '.join([i[1::] for i in command if i[0] == '@'])
-        negate = [i[1::] for i in command if i[0] == '-']
+        query = ' '.join([i for i in cmd if i[0] not in ['@', '-']])
+        artist = ' '.join([i[1::] for i in cmd if i[0] == '@'])
+        negate = [i[1::] for i in cmd if i[0] == '-']
 
         if len(query) == 0:
-            if len(QUEUE):
+            if len(QUEUE) > 0:
                 # Just continue to the next song in the queue.
                 PAUSED = False
                 return
@@ -97,20 +128,24 @@ class MusicCmd(Command):
         if not PLAYER_CHANNEL:
             PLAYER_CHANNEL = message.author.voice.channel
 
-        results = SUBSONIC.search(' '.join(command))
+        results = SUBSONIC.search(' '.join(cmd))
         album = None
         for i in results.albums:
             if any([k.lower() in i.title.lower() for k in negate]):
                 continue
 
-            if artist == '' or artist.lower() in i.artist.lower():
+            if artist == '' or (i.artist is not None and artist.lower() in i.artist.lower()):
                 album = i
                 break
 
         if album is None:
             return 'Album not found.'
 
-        await PLAYER_CHANNEL.send(f"Adding album **{album.title}** by *{album.artist}* ({len(album.songs)} songs) to the queue.")
+        if PLAYER_CHANNEL:
+            await PLAYER_CHANNEL.send(
+                f"Adding album **{album.title}** by *{album.artist}* " +
+                f"({len(album.songs)} songs) to the queue."
+            )
 
         for song in album.songs:
             QUEUE += [{
@@ -123,9 +158,25 @@ class MusicCmd(Command):
         PAUSED = False
 
     @subcommand
-    def help(self, message: Message, command: list[str]) -> str:
+    async def help(self, message: Message, cmd: list[str]) -> str | None:
+        """
+        Display help information for the play command.
+        This method provides usage instructions for the play command, including
+        how to search for songs, specify artists, and manage the queue.
+
+        Args:
+            message (Message): The Discord message that triggered the command.
+            cmd (list[str]): The command arguments, where the first element is the command name.
+
+        Returns:
+            str | None: A string containing the help information for the play command.
+        """
+
         return '\n'.join([
-            'Search the music server for a song and play the first result, or add to the queue if a song is already playing.',
+            (
+                'Search the music server for a song and play the first result, ' +
+                'or add to the queue if a song is already playing.'
+            ),
             'You can put @ in front of a word to indicate the artist name, e.g.:',
             '`!play billie jean @jackson`',
             'You can also put - in front of a word to exclude it from the search, e.g.:',
@@ -136,14 +187,32 @@ class MusicCmd(Command):
         ])
 
     @subcommand
-    def next(self, message: Message, command: list[str]) -> str:
-        PLAYER.stop()
-        return None
+    async def next(self, message: Message, cmd: list[str]) -> str | None:
+        """
+        Skip to the next song in the queue.
+        This method stops the current song and plays the next song in the queue,
+        if available. It also disconnects from the voice channel if no songs are left.
+
+        Args:
+            message (Message): The Discord message that triggered the command.
+            cmd (list[str]): The command arguments, where the first element is the command name.
+
+        Returns:
+            str | None: A message indicating the result of the operation, or None if successful.
+        """
+
+        if PLAYER:
+            PLAYER.stop()
 
     @repeat(seconds=1)
-    async def check_queue():
+    async def check_queue(self) -> None:
+        """
+        Check the music queue and play the next song if necessary.
+        This method is called periodically to ensure that the music player
+        is playing the next song in the queue if no song is currently playing.
+        """
+
         global PLAYER
-        global QUEUE
 
         if not PLAYER_CHANNEL:
             return
@@ -159,12 +228,11 @@ class MusicCmd(Command):
         # First exit the channel
         if PLAYER:
             PLAYER.stop()
-            # if not PLAYER.is_connected():
-            await PLAYER.disconnect()
+            await PLAYER.disconnect()  # type: ignore
             PLAYER = None
 
         # Remove any finished song from the queue
-        if len(QUEUE) and QUEUE[0]['playing']:
+        if len(QUEUE) > 0 and QUEUE[0]['playing']:
             QUEUE.pop(0)
 
         # Connect to the channel and play what's next in the queue
@@ -173,7 +241,7 @@ class MusicCmd(Command):
 
         try:
             PLAYER = await PLAYER_CHANNEL.connect()
-        except Exception as e:
+        except (asyncio.TimeoutError, discord.ClientException, discord.opus.OpusNotLoaded) as e:
             print(f'ERROR: {e}', flush=True)
             return
 
@@ -181,33 +249,49 @@ class MusicCmd(Command):
         item['playing'] = True
         await PLAYER_CHANNEL.send(f'Playing **{item["title"]}** by *{item["artist"]}*')
 
-        PLAYER.play(discord.FFmpegPCMAudio(item['url'], **FFMPEG_OPTIONS))
-        PLAYER.source = discord.PCMVolumeTransformer(PLAYER.source, volume=0.25)
+        PLAYER.play(discord.FFmpegPCMAudio(item['url'], **FFMPEG_OPTIONS))  # type: ignore
+        if PLAYER.source is not None:
+            PLAYER.source = discord.PCMVolumeTransformer(PLAYER.source, volume=0.25)
 
 
 @command('stop', 'Stop any music that\'s currently playing.', 'music')
-class MusicCmd(Command):
-    async def default(self, message: Message, command: list[str]) -> str:
+class MusicCmdStop(Command):
+    """
+    Command to stop the music player and disconnect from the voice channel.
+    This command stops any currently playing music, removes the current song from the queue,
+    and disconnects the bot from the voice channel.
+    Any songs in the queue will remain, but playback will be paused.
+    """
+
+    async def default(self, message: Message, cmd: list[str]) -> str | None:
         global PLAYER
         global PAUSED
-        global QUEUE
 
         PAUSED = True
-        if len(QUEUE) and QUEUE[0]['playing']:
+        if len(QUEUE) > 0 and QUEUE[0]['playing']:
             QUEUE.pop(0)
 
         if PLAYER:
             PLAYER.stop()
+            # pylint: disable=broad-exception-caught
             try:
                 await PLAYER.disconnect()
             except Exception as e:
                 return f'ERROR: {e}'
+            # pylint: enable=broad-exception-caught
+
             PLAYER = None
 
 
 @command('queue', 'List all songs in the music queue.', 'music')
-class MusicCmd(Command):
-    async def default(self, message: Message, command: list[str]) -> str:
+class MusicCmdQueue(Command):
+    """
+    Command to manage the music queue.
+    This command allows users to view the current music queue, see what song is currently playing,
+    and clear the queue if necessary.
+    """
+
+    async def default(self, message: Message, cmd: list[str]) -> str:
         if len(QUEUE) == 0:
             return 'There are no songs in the queue.'
 
@@ -223,12 +307,12 @@ class MusicCmd(Command):
         if len(QUEUE) > offset:
             msg += ['Up Next:']
 
-        maxprint = offset+20
-        for i in range(offset, min(offset+maxprint, len(QUEUE))):
-            msg += [f'{i-offset+1}. **{QUEUE[i]["title"]}** by *{QUEUE[i]["artist"]}*']
+        maxprint = offset + 20
+        for i in range(offset, min(offset + maxprint, len(QUEUE))):
+            msg += [f'{i - offset + 1}. **{QUEUE[i]["title"]}** by *{QUEUE[i]["artist"]}*']
 
         if maxprint < len(QUEUE):
-            msg += [f'\n(and {len(QUEUE)-maxprint} more.)']
+            msg += [f'\n(and {len(QUEUE) - maxprint} more.)']
 
         # Split up big responses into multiple messages
         text = msg.pop(0)
@@ -242,7 +326,20 @@ class MusicCmd(Command):
         return text
 
     @subcommand
-    async def help(self, message: Message, command: list[str]) -> str:
+    async def help(self, message: Message, cmd: list[str]) -> str:
+        """
+        Display help information for the queue command.
+        This method provides usage instructions for the queue command, including
+        how to view the queue and clear it.
+
+        Args:
+            message (Message): The Discord message that triggered the command.
+            cmd (list[str]): The command arguments, where the first element is the command name.
+
+        Returns:
+            str: A string containing the help information for the queue command.
+        """
+
         return '\n'.join([
             'View and edit the music queue.',
             '`!queue` lists all songs in the queue and what\'s playing, if anything.',
@@ -250,9 +347,21 @@ class MusicCmd(Command):
         ])
 
     @subcommand
-    async def clear(self, message: Message, command: list[str]) -> str:
+    async def clear(self, message: Message, cmd: list[str]) -> str:
+        """
+        Clear the music queue.
+        This method removes all songs from the queue, except for the currently playing song.
+
+        Args:
+            message (Message): The Discord message that triggered the command.
+            cmd (list[str]): The command arguments, where the first element is the command name.
+
+        Returns:
+            str: A message indicating that the queue has been cleared.
+        """
+
         global QUEUE
-        if len(QUEUE):
+        if len(QUEUE) > 0:
             QUEUE = [i for i in QUEUE if i['playing']]
 
         return 'All songs have been removed from the queue.'
