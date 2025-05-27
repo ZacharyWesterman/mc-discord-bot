@@ -89,7 +89,14 @@ class DiscordClient(discord.Client):
         # Set up all tasks to start repeating
         for cmd in commands.all().values():
             for task in cmd.repeat_tasks:
-                tasks.loop(seconds=task[1])(lambda fn=task[0], cmdlist=cmd: fn(cmdlist)).start()
+                async def run_task(fn=task[0], obj=cmd):
+                    """
+                    Run a repeating task with the provided function and command list.
+                    This is a workaround to avoid issues with passing parameters to tasks.
+                    """
+                    await fn(obj)
+
+                tasks.loop(seconds=task[1])(run_task).start()
 
     def set_markers(self, updated) -> None:
         """
