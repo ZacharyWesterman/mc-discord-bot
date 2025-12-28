@@ -258,7 +258,7 @@ class DiscordClient(discord.Client):
             return
 
         # Only respond to commands & messages if this is a DM, or it's in the games channel
-        valid_channels = ('games', 'The Abyss')
+        valid_channels = ('games', 'The Abyss', 'The Void')
         if (
             not isinstance(message.channel, discord.channel.DMChannel) and (
                 isinstance(message.channel, discord.PartialMessageable) or

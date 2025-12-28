@@ -35,7 +35,7 @@ PAUSED = False
 QUEUE = []
 
 
-@command('play', 'Play a song from the music server (only works in The Abyss).', 'music')
+@command('play', 'Play a song from the music server (only works in voice channels).', 'music')
 class MusicCmdPlay(Command):
     """
     Command to play music from a Subsonic server in a Discord voice channel.
@@ -48,7 +48,7 @@ class MusicCmdPlay(Command):
         global PAUSED
 
         if isinstance(message.author, discord.User) or message.author.voice is None:
-            return 'This command only works in The Abyss.'
+            return 'This command only works in voice channels.'
 
         query = ' '.join([i for i in cmd if i[0] not in ['@', '-']])
         artist = ' '.join([i[1::] for i in cmd if i[0] == '@'])
