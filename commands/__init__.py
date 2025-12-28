@@ -97,7 +97,7 @@ class Command:
 
         if len(cmd) and cmd[0] in self.subcommands:
             params = {'self': self, 'message': message,
-                      'command': cmd[1::]}
+                      'cmd': cmd[1::]}
             method = self.subcommands[cmd[0]]
             self.sub = cmd[0]
         else:
