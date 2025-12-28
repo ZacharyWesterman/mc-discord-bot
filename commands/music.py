@@ -29,8 +29,8 @@ FFMPEG_OPTIONS = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
     'options': '-vn',
 }
-PLAYER = None
-PLAYER_CHANNEL = None
+PLAYER: discord.VoiceClient | None = None
+PLAYER_CHANNEL: discord.channel.VocalGuildChannel | None = None
 PAUSED = False
 QUEUE = []
 
@@ -46,6 +46,7 @@ class MusicCmdPlay(Command):
         global PLAYER_CHANNEL
         global QUEUE
         global PAUSED
+        global PLAYER
 
         if isinstance(message.author, discord.User) or message.author.voice is None:
             return 'This command only works in voice channels.'
@@ -63,6 +64,10 @@ class MusicCmdPlay(Command):
             return 'Please input a search term, or use `!play help` for usage info.'
 
         if not PLAYER_CHANNEL:
+            if PLAYER:
+                if PLAYER.is_connected():
+                    await PLAYER.disconnect()
+                PLAYER = None
             PLAYER_CHANNEL = message.author.voice.channel
 
         results = SUBSONIC.search(' '.join(cmd))
@@ -217,6 +222,10 @@ class MusicCmdPlay(Command):
         if not PLAYER_CHANNEL:
             return
 
+        if PLAYER and not PLAYER.is_connected():
+            await PLAYER.disconnect()
+            PLAYER = await PLAYER_CHANNEL.connect(self_deaf=True)
+
         if PLAYER and PLAYER.is_playing():
             return
 
@@ -228,8 +237,6 @@ class MusicCmdPlay(Command):
         # First exit the channel
         if PLAYER:
             PLAYER.stop()
-            await PLAYER.disconnect()  # type: ignore
-            PLAYER = None
 
         # Remove any finished song from the queue
         if len(QUEUE) > 0 and QUEUE[0]['playing']:
@@ -240,7 +247,8 @@ class MusicCmdPlay(Command):
             return
 
         try:
-            PLAYER = await PLAYER_CHANNEL.connect()
+            if not PLAYER or not PLAYER.is_connected():
+                PLAYER = await PLAYER_CHANNEL.connect(self_deaf=True)
         except (asyncio.TimeoutError, discord.ClientException, discord.opus.OpusNotLoaded) as e:
             print(f'ERROR: {e}', flush=True)
             return
@@ -307,7 +315,7 @@ class MusicCmdQueue(Command):
         if len(QUEUE) > offset:
             msg += ['Up Next:']
 
-        maxprint = offset + 20
+        maxprint = offset + 2
         for i in range(offset, min(offset + maxprint, len(QUEUE))):
             msg += [f'{i - offset + 1}. **{QUEUE[i]["title"]}** by *{QUEUE[i]["artist"]}*']
 
