@@ -57,6 +57,8 @@ class MusicCmdPlay(Command):
 
         if len(query) == 0:
             if len(QUEUE) > 0:
+                if PLAYER and PLAYER.is_paused():
+                    PLAYER.resume()
                 # Just continue to the next song in the queue.
                 PAUSED = False
                 return
@@ -89,7 +91,8 @@ class MusicCmdPlay(Command):
             'artist': song.artist,
             'playing': False,
         }]
-        PAUSED = False
+        if not PLAYER or not PLAYER.is_paused():
+            PAUSED = False
 
         return (
             f"Added **{song.title}** by *{song.artist}* to the queue."
@@ -160,7 +163,8 @@ class MusicCmdPlay(Command):
                 'playing': False,
             }]
 
-        PAUSED = False
+        if not PLAYER or not PLAYER.is_paused():
+            PAUSED = False
 
     @subcommand
     async def help(self, message: Message, cmd: list[str]) -> str | None:
@@ -206,8 +210,11 @@ class MusicCmdPlay(Command):
             str | None: A message indicating the result of the operation, or None if successful.
         """
 
+        global PAUSED
+
         if PLAYER:
             PLAYER.stop()
+            PAUSED = False
 
     @repeat(seconds=1)
     async def check_queue(self) -> None:
@@ -260,6 +267,24 @@ class MusicCmdPlay(Command):
         PLAYER.play(discord.FFmpegPCMAudio(item['url'], **FFMPEG_OPTIONS))  # type: ignore
         if PLAYER.source is not None:
             PLAYER.source = discord.PCMVolumeTransformer(PLAYER.source, volume=0.25)
+
+
+@command('pause', 'Stop any music that\'s currently playing.', 'music')
+class MusicCmdPause(Command):
+    """
+    Command to pause the music player and disconnect from the voice channel.
+    This command stops any currently playing music, but does not remove the
+    current song from the queue.
+    Any songs in the queue will remain, but playback will be paused.
+    """
+
+    async def default(self, message: Message, cmd: list[str]) -> str | None:
+        global PAUSED
+
+        PAUSED = True
+
+        if PLAYER:
+            PLAYER.pause()
 
 
 @command('stop', 'Stop any music that\'s currently playing.', 'music')
