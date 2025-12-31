@@ -8,6 +8,7 @@ and control playback within a Discord voice channel.
 import asyncio
 import json
 from pathlib import Path
+from typing import Any
 
 import discord
 from discord import Message
@@ -29,10 +30,125 @@ FFMPEG_OPTIONS = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
     'options': '-vn',
 }
-PLAYER: discord.VoiceClient | None = None
-PLAYER_CHANNEL: discord.channel.VocalGuildChannel | None = None
-PAUSED = False
-QUEUE = []
+
+
+class Player:
+    def __init__(self, channel: discord.channel.VocalGuildChannel):
+        self.client: discord.VoiceClient | None = None
+        self.channel = channel
+        self.name = channel.name
+        self.queue: list[dict[str, Any]] = []
+        self.stopped = True
+
+    def add_song(self, url: str, title: str, artist: str | None) -> None:
+        self.queue += [{
+            'url': url,
+            'title': title,
+            'artist': artist,
+            'playing': False,
+        }]
+
+    async def require_client(self) -> discord.VoiceClient | None:
+        if not self.client or not self.client.is_connected():
+            for player in PLAYERS.values():
+                if player.client and player.client.is_connected():
+                    await self.channel.send('**ERROR**: Already connected to a voice channel.')
+                    return
+
+            try:
+                self.client = await self.channel.connect(self_deaf=True)
+            except (asyncio.TimeoutError, discord.ClientException, discord.opus.OpusNotLoaded) as e:
+                print(f'ERROR: {e}', flush=True)
+                await self.channel.send(f'**ERROR**: {e}')
+                return None
+
+        return self.client
+
+    async def play_next_song(self) -> None:
+        # If the current song was in progress but no longer is,
+        # Remove it and play the next one
+        if len(self.queue) > 0 and self.queue[0]['playing'] == True:
+            self.queue.pop(0)
+
+        if len(self.queue) == 0:
+            return
+
+        if not (client := await self.require_client()):
+            return
+
+        item = self.queue[0]
+        item['playing'] = True
+
+        client.stop()
+
+        client.play(discord.FFmpegPCMAudio(item['url'], **FFMPEG_OPTIONS))  # type: ignore
+        if client.source is not None:
+            client.source = discord.PCMVolumeTransformer(client.source, volume=0.25)
+
+        await self.channel.send(f'Playing **{item["title"]}** by *{item["artist"]}*')
+
+    async def play(self) -> None:
+        if self.is_paused():
+            if not (client := await self.require_client()):
+                return
+            client.resume()
+        if not self.is_playing():
+            await self.play_next_song()
+
+    def is_playing(self) -> bool:
+        if self.client:
+            return self.client.is_playing()
+        return False
+
+    async def pause(self) -> None:
+        if not self.client:
+            return
+
+        self.client.pause()
+
+    def is_paused(self) -> bool:
+        if self.client:
+            return self.client.is_paused()
+        return False
+
+    async def next(self) -> None:
+        await self.play_next_song()
+
+    async def stop(self) -> None:
+        if self.is_paused() or self.is_playing():
+            # Remove the current song from the queue.
+            if len(self.queue) > 0:
+                self.queue.pop(0)
+
+        # Stop the player and disconnect
+        if self.client:
+            self.client.stop()
+            await self.client.disconnect()
+            self.client = None
+
+    def is_stopped(self) -> bool:
+        return self.client is not None
+
+
+PLAYERS: dict[str, Player] = {}
+
+
+def get_player(channel: discord.channel.VocalGuildChannel) -> Player:
+    if channel.name not in PLAYERS:
+        PLAYERS[channel.name] = Player(channel)
+    return PLAYERS[channel.name]
+
+
+def get_channel(message: Message) -> tuple[discord.VoiceChannel | None, str | None]:
+    if (
+        isinstance(message.author, discord.User) or
+        message.author.voice is None or
+        message.author.voice.channel is None
+    ):
+        return None, 'This command only works in voice channels.'
+
+    channel: discord.VoiceChannel = message.author.voice.channel  # type: ignore
+    return channel, None
 
 
 @command('play', 'Play a song from the music server (only works in voice channels).', 'music')
@@ -43,34 +159,24 @@ class MusicCmdPlay(Command):
     """
 
     async def default(self, message: Message, cmd: list[str]) -> str | None:
-        global PLAYER_CHANNEL
-        global QUEUE
-        global PAUSED
-        global PLAYER
-
-        if isinstance(message.author, discord.User) or message.author.voice is None:
-            return 'This command only works in voice channels.'
+        channel, msg = get_channel(message)
+        if channel is None:
+            return msg
 
         query = ' '.join([i for i in cmd if i[0] not in ['@', '-']])
         artist = ' '.join([i[1::] for i in cmd if i[0] == '@'])
         negate = [i[1::] for i in cmd if i[0] == '-']
 
         if len(query) == 0:
-            if len(QUEUE) > 0:
-                if PLAYER and PLAYER.is_paused():
-                    PLAYER.resume()
-                # Just continue to the next song in the queue.
-                PAUSED = False
-                return
+            if channel.name not in PLAYERS:
+                return 'No music is currently playing in this channel. See `!play help` for usage info.'
 
-            return 'Please input a search term, or use `!play help` for usage info.'
+            player = get_player(channel)
+            if len(player.queue) == 0:
+                return 'No songs are in the queue. To add a song, append some search terms to your command, or use `!play help` for usage info.'
 
-        if not PLAYER_CHANNEL:
-            if PLAYER:
-                if PLAYER.is_connected():
-                    await PLAYER.disconnect()
-                PLAYER = None
-            PLAYER_CHANNEL = message.author.voice.channel
+            await player.play()
+            return
 
         results = SUBSONIC.search(' '.join(cmd))
         song = None
@@ -85,20 +191,14 @@ class MusicCmdPlay(Command):
         if song is None:
             return 'Song not found.'
 
-        QUEUE += [{
-            'url': song.uri,
-            'title': song.title,
-            'artist': song.artist,
-            'playing': False,
-        }]
-        if not PLAYER or not PLAYER.is_paused():
-            PAUSED = False
+        player = get_player(channel)
+        player.add_song(song.uri, song.title, song.artist)
+        await player.play()
 
-        return (
-            f"Added **{song.title}** by *{song.artist}* to the queue."
-            if len(QUEUE) > 0 and QUEUE[0]['playing']
-            else None
-        )
+        if len(player.queue) == 1:
+            return
+
+        return f"Added **{song.title}** by *{song.artist}* to the queue."
 
     @subcommand
     async def album(self, message: Message, cmd: list[str]) -> str | None:
@@ -114,27 +214,24 @@ class MusicCmdPlay(Command):
             str | None: A message indicating the result of the operation, or None if successful.
         """
 
-        global PLAYER_CHANNEL
-        global QUEUE
-        global PAUSED
-
-        if isinstance(message.author, discord.User) or message.author.voice is None:
-            return 'This command only works in The Abyss.'
+        channel, msg = get_channel(message)
+        if channel is None:
+            return msg
 
         query = ' '.join([i for i in cmd if i[0] not in ['@', '-']])
         artist = ' '.join([i[1::] for i in cmd if i[0] == '@'])
         negate = [i[1::] for i in cmd if i[0] == '-']
 
         if len(query) == 0:
-            if len(QUEUE) > 0:
-                # Just continue to the next song in the queue.
-                PAUSED = False
-                return
+            if channel.name not in PLAYERS:
+                return 'No music is currently playing in this channel. See `!play help` for usage info.'
 
-            return 'Please input a search term, or use `!play help` for usage info.'
+            player = get_player(channel)
+            if len(player.queue) == 0:
+                return 'No songs are in the queue. To add a song, append some search terms to your command, or use `!play help` for usage info.'
 
-        if not PLAYER_CHANNEL:
-            PLAYER_CHANNEL = message.author.voice.channel
+            await player.play()
+            return
 
         results = SUBSONIC.search(' '.join(cmd))
         album = None
@@ -149,22 +246,16 @@ class MusicCmdPlay(Command):
         if album is None:
             return 'Album not found.'
 
-        if PLAYER_CHANNEL:
-            await PLAYER_CHANNEL.send(
-                f"Adding album **{album.title}** by *{album.artist}* " +
-                f"({len(album.songs)} songs) to the queue."
-            )
+        await channel.send(
+            f"Adding album **{album.title}** by *{album.artist}* " +
+            f"({len(album.songs)} songs) to the queue."
+        )
 
+        player = get_player(channel)
         for song in album.songs:
-            QUEUE += [{
-                'url': song.uri,
-                'title': song.title,
-                'artist': song.artist,
-                'playing': False,
-            }]
+            player.add_song(song.uri, song.title, song.artist)
 
-        if not PLAYER or not PLAYER.is_paused():
-            PAUSED = False
+        await player.play()
 
     @subcommand
     async def help(self, message: Message, cmd: list[str]) -> str | None:
@@ -210,11 +301,12 @@ class MusicCmdPlay(Command):
             str | None: A message indicating the result of the operation, or None if successful.
         """
 
-        global PAUSED
+        channel, msg = get_channel(message)
+        if channel is None:
+            return msg
 
-        if PLAYER:
-            PLAYER.stop()
-            PAUSED = False
+        player = get_player(channel)
+        await player.next()
 
     @repeat(seconds=1)
     async def check_queue(self) -> None:
@@ -224,49 +316,25 @@ class MusicCmdPlay(Command):
         is playing the next song in the queue if no song is currently playing.
         """
 
-        global PLAYER
+        # Continue in the currently connected channel, if any
+        for player in PLAYERS.values():
+            if not player.client:
+                continue
 
-        if not PLAYER_CHANNEL:
-            return
+            if not player.client.is_connected():
+                await player.play()
+                await player.pause()
+                continue
 
-        if PLAYER and not PLAYER.is_connected():
-            await PLAYER.disconnect()
-            PLAYER = await PLAYER_CHANNEL.connect(self_deaf=True)
+            if player.is_paused() or player.is_stopped():
+                continue
 
-        if PLAYER and PLAYER.is_playing():
-            return
+            await player.play()
 
-        if PAUSED:
-            return
-
-        # If not playing audio, continue to next song
-
-        # First exit the channel
-        if PLAYER:
-            PLAYER.stop()
-
-        # Remove any finished song from the queue
-        if len(QUEUE) > 0 and QUEUE[0]['playing']:
-            QUEUE.pop(0)
-
-        # Connect to the channel and play what's next in the queue
-        if len(QUEUE) == 0:
-            return
-
-        try:
-            if not PLAYER or not PLAYER.is_connected():
-                PLAYER = await PLAYER_CHANNEL.connect(self_deaf=True)
-        except (asyncio.TimeoutError, discord.ClientException, discord.opus.OpusNotLoaded) as e:
-            print(f'ERROR: {e}', flush=True)
-            return
-
-        item = QUEUE[0]
-        item['playing'] = True
-        await PLAYER_CHANNEL.send(f'Playing **{item["title"]}** by *{item["artist"]}*')
-
-        PLAYER.play(discord.FFmpegPCMAudio(item['url'], **FFMPEG_OPTIONS))  # type: ignore
-        if PLAYER.source is not None:
-            PLAYER.source = discord.PCMVolumeTransformer(PLAYER.source, volume=0.25)
+        # Otherwise, pick the first channel
+        # for player in PLAYERS.values():
+        #     await player.play()
+        #     break
 
 
 @command('pause', 'Stop any music that\'s currently playing.', 'music')
@@ -279,12 +347,12 @@ class MusicCmdPause(Command):
     """
 
     async def default(self, message: Message, cmd: list[str]) -> str | None:
-        global PAUSED
+        channel, msg = get_channel(message)
+        if channel is None:
+            return msg
 
-        PAUSED = True
-
-        if PLAYER:
-            PLAYER.pause()
+        player = get_player(channel)
+        await player.pause()
 
 
 @command('stop', 'Stop any music that\'s currently playing.', 'music')
@@ -297,23 +365,12 @@ class MusicCmdStop(Command):
     """
 
     async def default(self, message: Message, cmd: list[str]) -> str | None:
-        global PLAYER
-        global PAUSED
+        channel, msg = get_channel(message)
+        if channel is None:
+            return msg
 
-        PAUSED = True
-        if len(QUEUE) > 0 and QUEUE[0]['playing']:
-            QUEUE.pop(0)
-
-        if PLAYER:
-            PLAYER.stop()
-            # pylint: disable=broad-exception-caught
-            try:
-                await PLAYER.disconnect()
-            except Exception as e:
-                return f'ERROR: {e}'
-            # pylint: enable=broad-exception-caught
-
-            PLAYER = None
+        player = get_player(channel)
+        await player.stop()
 
 
 @command('queue', 'List all songs in the music queue.', 'music')
@@ -324,28 +381,34 @@ class MusicCmdQueue(Command):
     and clear the queue if necessary.
     """
 
-    async def default(self, message: Message, cmd: list[str]) -> str:
-        if len(QUEUE) == 0:
+    async def default(self, message: Message, cmd: list[str]) -> str | None:
+        channel, msg = get_channel(message)
+        if channel is None:
+            return msg
+
+        player = get_player(channel)
+
+        if len(player.queue) == 0:
             return 'There are no songs in the queue.'
 
         offset = 0
         msg = []
-        if QUEUE[0]['playing']:
+        if player.queue[0]['playing']:
             offset = 1
             msg += [
                 'Currently Playing:',
-                f'- **{QUEUE[0]["title"]}** by *{QUEUE[0]["artist"]}*',
+                f'- **{player.queue[0]["title"]}** by *{player.queue[0]["artist"]}*',
             ]
 
-        if len(QUEUE) > offset:
+        if len(player.queue) > offset:
             msg += ['Up Next:']
 
         maxprint = offset + 2
-        for i in range(offset, min(offset + maxprint, len(QUEUE))):
-            msg += [f'{i - offset + 1}. **{QUEUE[i]["title"]}** by *{QUEUE[i]["artist"]}*']
+        for i in range(offset, min(offset + maxprint, len(player.queue))):
+            msg += [f'{i - offset + 1}. **{player.queue[i]["title"]}** by *{player.queue[i]["artist"]}*']
 
-        if maxprint < len(QUEUE):
-            msg += [f'\n(and {len(QUEUE) - maxprint} more.)']
+        if maxprint < len(player.queue):
+            msg += [f'\n(and {len(player.queue) - maxprint} more.)']
 
         # Split up big responses into multiple messages
         text = msg.pop(0)
@@ -380,7 +443,7 @@ class MusicCmdQueue(Command):
         ])
 
     @subcommand
-    async def clear(self, message: Message, cmd: list[str]) -> str:
+    async def clear(self, message: Message, cmd: list[str]) -> str | None:
         """
         Clear the music queue.
         This method removes all songs from the queue, except for the currently playing song.
@@ -393,8 +456,11 @@ class MusicCmdQueue(Command):
             str: A message indicating that the queue has been cleared.
         """
 
-        global QUEUE
-        if len(QUEUE) > 0:
-            QUEUE = [i for i in QUEUE if i['playing']]
+        channel, msg = get_channel(message)
+        if channel is None:
+            return msg
 
-        return 'All songs have been removed from the queue.'
+        player = get_player(channel)
+        player.queue = [i for i in player.queue if i['playing']]
+
+        return 'Any upcoming songs have been removed from the queue.'
