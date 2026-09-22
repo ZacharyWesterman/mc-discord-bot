@@ -138,7 +138,12 @@ class DiscordClient(discord.Client):
         """
 
         # Update discord bot status to reflect whether players are online
-        status = MINECRAFT.status()
+        try:
+            status = MINECRAFT.status()
+        except TimeoutError:
+            # Bedrock server possibly doesn't exist?
+            return
+
         count = status.players.online
 
         if count == 0:
