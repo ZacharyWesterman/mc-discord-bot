@@ -138,25 +138,30 @@ class DiscordClient(discord.Client):
         """
 
         # Update discord bot status to reflect whether players are online
+        exists = True
         try:
             status = MINECRAFT.status()
+
+            count = status.players.online
+            if count == 0:
+                status = discord.Status.offline
+                activity = 'an empty server'
+            else:
+                status = discord.Status.online
+                activity = str(count) + ' player' + ('' if count == 1 else 's')
         except TimeoutError:
             # Bedrock server possibly doesn't exist?
-            return
-
-        count = status.players.online
-
-        if count == 0:
-            status = discord.Status.idle
-            activity = 'an empty server'
-        else:
-            status = discord.Status.online
-            activity = str(count) + ' player' + ('' if count == 1 else 's')
+            exists = False
+            status = discord.Status.offline
+            activity = 'Avengers Endgame (not enjoying it)'
 
         if self.activity != activity:
             act = discord.Activity(
                 name=activity, type=discord.ActivityType.watching)
             await self.change_presence(status=status, activity=act)
+
+        if not exists:
+            return
 
         # Fetch any updated messages and convert them into markers
         updated = {
