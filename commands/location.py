@@ -217,7 +217,7 @@ class LocationCmd(Command):
         response = ''
         page_number = 1
         msg_ct = self.count_valid_messages()
-        page_ct = ceil(msg_ct / MAX_POI)
+        page_ct = max(ceil(msg_ct / MAX_POI), 1)
 
         if len(cmd):
             if not re.match(r'^\d+$', cmd[0]) or int(cmd[0]) < 1:
