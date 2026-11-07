@@ -152,13 +152,13 @@ class DiscordClient(discord.Client):
         # except TimeoutError:
         # Bedrock server possibly doesn't exist?
         exists = False
-        status = discord.Status.offline
+        status = discord.Status.idle
         activity = 'Avengers Endgame (not enjoying it)'
 
-        # if self.activity != activity:
-        #     act = discord.Activity(
-        #         name=activity, type=discord.ActivityType.watching)
-        #     await self.change_presence(status=status, activity=act)
+        if self.activity != activity:
+            act = discord.Activity(
+                name=activity, type=discord.ActivityType.watching)
+            await self.change_presence(status=status, activity=act)
 
         # if not exists:
         #     return
@@ -346,7 +346,7 @@ class DiscordClient(discord.Client):
             return
 
         # Ignore users reacting to someone else's message
-        if msg['author'] != payload.user_id:
+        if msg['author'] != payload.user_id and msg['author'] is not None:
             return
 
         if payload.emoji.name not in msg['emojis']:
@@ -395,7 +395,7 @@ class DiscordClient(discord.Client):
         if msg is None:
             return
 
-        if msg['author'] != payload.user_id:
+        if msg['author'] != payload.user_id and msg['author'] is not None:
             return
 
         msg['emojis'].remove(payload.emoji.name)
