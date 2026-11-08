@@ -104,6 +104,6 @@ class MessageCmd(Command):
             alias = str(message.author)
             self.log(f'Received DM from {message.author}: {message.content}')
 
-        send_message_minecraft(alias, ' '.join(cmd[1::]))
+        send_message_minecraft(alias, ' '.join(cmd))
 
         return None, '✅'  # Don't respond to the message, just react to it.

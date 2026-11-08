@@ -82,7 +82,7 @@ class AliasCmd(Command):
 
     async def default(self, message: Message, cmd: list[str]) -> str:
         if len(cmd) > 0:
-            if self.set_alias(message.author.id, cmd[1]):
+            if self.set_alias(message.author.id, cmd[0]):
                 return 'Alias has been updated.'
 
             return 'Failed to set alias: a different person is already using that name.'
